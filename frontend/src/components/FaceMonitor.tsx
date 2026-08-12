@@ -163,15 +163,13 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
 
       const frames: Blob[] = [];
 
-      // Capture 3 frames with instructions
+      // Capture 3 frames with 2-second positioning countdown per angle
       for (const angle of angles) {
-        setRegistrationStatus(`${angle.number}/3 - ${angle.instruction}`);
+        setRegistrationStatus(`📸 Angle ${angle.number}/3: ${angle.instruction} (Hold 2s...)`);
         setRegistrationFrameCount(angle.number);
 
-        // Wait 2 seconds for user to position
-        if (angle.number > 1) {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-        }
+        // 2-second countdown delay for positioning
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         // Capture frame
         const ctx = canvasRef.current.getContext('2d');
@@ -180,13 +178,13 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
         ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
 
         const blob = await new Promise<Blob>((resolve) => {
-          canvasRef.current!.toBlob((b) => resolve(b!), 'image/jpeg');
+          canvasRef.current!.toBlob((b) => resolve(b!), 'image/jpeg', 0.9);
         });
 
         frames.push(blob);
       }
 
-      setRegistrationStatus('Processing 3 frames...');
+      setRegistrationStatus('⏳ Extracting AI face features from 3 angles...');
 
       // Send all 3 frames to backend
       const formData = new FormData();
@@ -200,20 +198,21 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
         body: formData,
       });
 
-      if (response.ok) {
+      const resData = await response.json();
+
+      if (response.ok && resData.success) {
         setRegistrationStatus(`✅ ${registrationName} registered successfully with 3 angles!`);
         setRegistrationName('');
         setRegistrationFrameCount(0);
         setRegistrationFrames([]);
         setTimeout(() => {
-          setShowRegistration(false);
           setRegistrationStatus('');
-        }, 2000);
+        }, 3000);
       } else {
-        setRegistrationStatus('Registration failed');
+        setRegistrationStatus(`❌ ${resData.message || resData.detail || 'Registration failed'}`);
       }
     } catch (error) {
-      setRegistrationStatus('Error: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      setRegistrationStatus('❌ Error: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsRegistering(false);
       setRegistrationFrameCount(0);
@@ -313,7 +312,13 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
       {/* Face Status Card */}
       <div className={`${bgColor} rounded-2xl border-2 ${borderColor} p-6 transition`}>
         <p className={`text-sm font-medium text-slate-500 uppercase`}>Face Recognition Status</p>
-        <p className={`text-3xl font-bold mt-2 ${textColor}`}>{faceStatus.label}</p>
+        <p className={`text-3xl font-extrabold mt-2 ${
+          faceStatus.label.includes('INTRUDER')
+            ? 'text-red-500 animate-pulse drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]'
+            : faceStatus.label.includes('KNOWN')
+              ? 'text-emerald-400 font-extrabold drop-shadow-[0_0_10px_rgba(52,211,153,0.5)]'
+              : textColor
+        }`}>{faceStatus.label}</p>
         <p className={`text-sm mt-1 font-mono ${textColor}`}>
           Confidence: {(faceStatus.confidence * 100).toFixed(1)}%
         </p>

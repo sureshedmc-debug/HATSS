@@ -125,17 +125,31 @@ async def analyze_frame(image: UploadFile = File(...)) -> dict:
         known_embeddings, known_names = await asyncio.to_thread(load_embeddings)
         
         if len(known_embeddings) == 0:
-            # No known faces registered yet
+            # No known faces registered yet - Treat face as INTRUDER & save snapshot
+            global _last_intrusion_saved_time
+            now_ts = datetime.now(UTC).timestamp()
+            if '_last_intrusion_saved_time' not in globals() or (now_ts - _last_intrusion_saved_time) > 2.0:
+                try:
+                    intrusions_dir = Path("data/intruder_snaps")
+                    intrusions_dir.mkdir(parents=True, exist_ok=True)
+                    timestamp = int(now_ts)
+                    intrusion_path = intrusions_dir / f"{timestamp}.jpg"
+                    await asyncio.to_thread(cv2.imwrite, str(intrusion_path), frame)
+                    _last_intrusion_saved_time = now_ts
+                    print(f"🚨 Intruder photo saved (unregistered): {intrusion_path}")
+                except Exception as e:
+                    print(f"⚠️ Failed to save intrusion photo: {e}")
+
             _current_face_status = {
-                "label": "UNKNOWN",
-                "confidence": 0.5,
+                "label": "INTRUDER",
+                "confidence": 0.95,
                 "last_updated": datetime.now(UTC)
             }
             return {
-                "label": "UNKNOWN",
-                "confidence": 0.5,
+                "label": "INTRUDER",
+                "confidence": 0.95,
                 "faces_detected": len(detections),
-                "message": "No known faces registered. Register some faces first!"
+                "matched": False
             }
         
         # Match face (CPU-bound, run in thread pool)
