@@ -97,8 +97,8 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ 
           video: { 
-            width: { ideal: 3840, max: 3840 }, 
-            height: { ideal: 2160, max: 2160 },
+            width: { ideal: 15360, max: 15360 }, 
+            height: { ideal: 8640, max: 8640 },
             frameRate: { ideal: 60 }
           },
           audio: false 
@@ -338,7 +338,7 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
             playsInline={true}
             muted={true}
             className={`w-full h-full object-cover ${cameraActive ? 'opacity-100' : 'opacity-50'}`}
-            style={{ transform: 'scaleX(-1)', filter: 'contrast(1.08) saturate(1.15) brightness(1.02)' }}
+            style={{ transform: 'scaleX(-1)', filter: 'contrast(1.12) saturate(1.22) brightness(1.03)' }}
           />
           {/* Live Bounding Box Tracking Overlay */}
           <canvas
