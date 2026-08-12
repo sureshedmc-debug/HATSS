@@ -27,7 +27,7 @@ export function IntrusionGallery({ theme }: IntrusionGalleryProps) {
     };
 
     fetchIntrusions();
-    const interval = setInterval(fetchIntrusions, 3000);
+    const interval = setInterval(fetchIntrusions, 1500);
     return () => clearInterval(interval);
   }, []);
 

@@ -140,7 +140,7 @@ async def analyze_frame(image: UploadFile = File(...)) -> dict:
         
         # Match face (CPU-bound, run in thread pool)
         is_match, matched_name, score = await asyncio.to_thread(
-            match_face, known_embeddings, known_names, embedding, 0.5
+            match_face, known_embeddings, known_names, embedding, 0.78
         )
         
         if is_match:
@@ -157,16 +157,20 @@ async def analyze_frame(image: UploadFile = File(...)) -> dict:
                 "name": matched_name
             }
         else:
-            # INTRUDER DETECTED - Save frame (I/O-bound, run in thread pool)
-            try:
-                intrusions_dir = Path("data/intruder_snaps")
-                intrusions_dir.mkdir(parents=True, exist_ok=True)
-                timestamp = int(datetime.now(UTC).timestamp())
-                intrusion_path = intrusions_dir / f"{timestamp}.jpg"
-                await asyncio.to_thread(cv2.imwrite, str(intrusion_path), frame)
-                print(f"✅ Intrusion saved: {intrusion_path}")
-            except Exception as e:
-                print(f"⚠️ Failed to save intrusion: {e}")
+            # INTRUDER DETECTED - Save snapshot (throttled to 1 image per 2 seconds)
+            global _last_intrusion_saved_time
+            now_ts = datetime.now(UTC).timestamp()
+            if '_last_intrusion_saved_time' not in globals() or (now_ts - _last_intrusion_saved_time) > 2.0:
+                try:
+                    intrusions_dir = Path("data/intruder_snaps")
+                    intrusions_dir.mkdir(parents=True, exist_ok=True)
+                    timestamp = int(now_ts)
+                    intrusion_path = intrusions_dir / f"{timestamp}.jpg"
+                    await asyncio.to_thread(cv2.imwrite, str(intrusion_path), frame)
+                    _last_intrusion_saved_time = now_ts
+                    print(f"🚨 Intruder photo saved: {intrusion_path}")
+                except Exception as e:
+                    print(f"⚠️ Failed to save intrusion photo: {e}")
             
             _current_face_status = {
                 "label": "INTRUDER",
