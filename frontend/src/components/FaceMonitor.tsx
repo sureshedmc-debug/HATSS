@@ -30,7 +30,7 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
         
         // Request camera with no fancy constraints first
         stream = await navigator.mediaDevices.getUserMedia({ 
-          video: true,
+          video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
           audio: false 
         });
         
