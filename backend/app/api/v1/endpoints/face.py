@@ -21,6 +21,7 @@ from pathlib import Path
 router = APIRouter(prefix="/face", tags=["face"])
 
 # Global state for current face detection
+_last_intrusion_saved_time = 0.0
 _current_face_status = {
     "label": "NO FACE",
     "confidence": 0.0,
