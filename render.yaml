@@ -1,0 +1,61 @@
+services:
+  # 1. Backend Service (FastAPI)
+  - type: web
+    name: hatss-backend
+    runtime: python
+    plan: free
+    buildCommand: cd backend && pip install --upgrade pip && pip install .
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: HATSS_ENVIRONMENT
+        value: production
+      - key: HATSS_DEBUG
+        value: "false"
+      - key: HATSS_DOCS_ENABLED
+        value: "false"
+      - key: HATSS_DATABASE_HOST
+        fromDatabase:
+          name: hatss-db
+          property: host
+      - key: HATSS_DATABASE_PORT
+        fromDatabase:
+          name: hatss-db
+          property: port
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: hatss-db
+          property: database
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: hatss-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: hatss-db
+          property: password
+      - key: HATSS_CORS_ORIGINS
+        value: '["*"]'
+      - key: HATSS_TRUSTED_HOSTS
+        value: '["*"]'
+
+  # 2. Frontend Service (React + Vite Static Site)
+  - type: web
+    name: hatss-frontend
+    runtime: static
+    plan: free
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: hatss-backend
+          property: url
+          envVarKey: VITE_API_BASE_URL
+
+databases:
+  # 3. Database (PostgreSQL)
+  - name: hatss-db
+    databaseName: hatss
+    user: hatss
+    plan: free
