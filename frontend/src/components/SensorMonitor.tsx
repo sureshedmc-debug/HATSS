@@ -15,12 +15,12 @@ interface SensorState {
   buzzer: boolean;
   muted: boolean;
   last_update: string;
-  status: string;
+  status: 'connected' | 'connecting' | 'disconnected';
   uptime?: number;
 }
 
 export function SensorMonitor({ theme }: SensorMonitorProps) {
-  // Pure state - No fake values
+  // Pure live state - No fake values
   const [sensors, setSensors] = useState<SensorState>({
     fire: false,
     pir: false,
@@ -47,10 +47,10 @@ export function SensorMonitor({ theme }: SensorMonitorProps) {
             fire: Boolean(espData.flame),
             pir: Boolean(espData.ir),
             gas: Boolean(espData.gas),
-            raw_gas: Number(espData.raw_mq2 || espData.raw_gas || 0),
-            mq2_rating: Number(espData.mq2_rating || 0),
-            water: Number(espData.water || 0),
-            raw_water: Number(espData.raw_water || 0),
+            raw_gas: Number(espData.raw_mq2 ?? espData.raw_gas ?? 0),
+            mq2_rating: Number(espData.mq2_rating ?? 0),
+            water: Number(espData.water ?? 0),
+            raw_water: Number(espData.raw_water ?? 0),
             buzzer: Boolean(espData.buzzer),
             muted: Boolean(espData.muted),
             last_update: new Date().toLocaleTimeString(),
@@ -65,7 +65,10 @@ export function SensorMonitor({ theme }: SensorMonitorProps) {
           const res = await fetch('/api/v1/sensors/status');
           if (res.ok) {
             const data = await res.json();
-            setSensors(data);
+            setSensors({
+              ...data,
+              status: data.status === 'connected' ? 'connected' : 'connecting'
+            });
           }
         } catch (err) {
           console.error('Sensor fetch error:', err);
@@ -79,11 +82,11 @@ export function SensorMonitor({ theme }: SensorMonitorProps) {
   }, []);
 
   const bgColor = theme === 'dark' ? 'bg-slate-950' : 'bg-white';
-  const textColor = theme === 'dark' ? 'text-white' : 'text-slate-900';
   const borderColor = theme === 'dark' ? 'border-slate-800' : 'border-slate-300';
 
-  const isGasHazard = sensors.raw_gas > 2200 || sensors.gas;
-  const isWaterLow = sensors.water <= 15;
+  const isConnected = sensors.status === 'connected';
+  const isGasHazard = isConnected && (sensors.raw_gas > 2200 || sensors.gas);
+  const isWaterLow = isConnected && sensors.water <= 15;
 
   return (
     <div className="space-y-4">
@@ -103,71 +106,85 @@ export function SensorMonitor({ theme }: SensorMonitorProps) {
         <div>
           <p className="text-xs text-slate-500 font-medium">ESP32 Hardware Direct IP: http://192.168.4.1/api/sensors</p>
           <p className="text-xs text-slate-400 font-mono mt-0.5">
-            Last Update: {sensors.last_update} {sensors.uptime ? `• Uptime: ${sensors.uptime}s` : ''}
+            {isConnected ? `Last Sync: ${sensors.last_update} • Uptime: ${sensors.uptime || 0}s` : 'Waiting for hardware connection...'}
           </p>
         </div>
         <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-          sensors.status === 'connected' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400'
+          isConnected ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400'
         }`}>
-          {sensors.status === 'connected' ? '🟢 ESP32 LIVE CONNECTED' : '🟡 SEARCHING ESP32 (192.168.4.1)'}
+          {isConnected ? '🟢 ESP32 LIVE CONNECTED' : '🟡 SEARCHING ESP32 (192.168.4.1)'}
         </span>
       </div>
 
       {/* Sensor Widgets Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        {/* 1. Fire Sensor Widget */}
+        {/* 1. Flame Detection Widget */}
         <div className={`${bgColor} rounded-2xl border transition-all ${
-          sensors.fire ? 'border-red-500 bg-red-500/10 shadow-lg shadow-red-500/20' : borderCard(theme)
+          isConnected && sensors.fire ? 'border-red-500 bg-red-500/10 shadow-lg shadow-red-500/20' : borderCard(theme)
         } p-5`}>
           <div className="flex items-center justify-between">
             <div className="text-4xl">🔥</div>
-            <div className={`w-3.5 h-3.5 rounded-full ${sensors.fire ? 'bg-red-500 animate-ping' : 'bg-emerald-500'}`} />
+            <div className={`w-3.5 h-3.5 rounded-full ${
+              !isConnected ? 'bg-slate-600' : sensors.fire ? 'bg-red-500 animate-ping' : 'bg-emerald-500'
+            }`} />
           </div>
-          <p className="text-xs font-semibold text-slate-400 uppercase mt-4">Flame Detection (D32)</p>
-          <p className={`text-2xl font-bold mt-1 ${sensors.fire ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>
-            {sensors.fire ? '🔥 FIRE DETECTED!' : 'SAFE'}
+          <p className="text-xs font-semibold text-slate-400 uppercase mt-4">Flame Detection</p>
+          <p className={`text-2xl font-bold mt-1 ${
+            !isConnected ? 'text-slate-500' : sensors.fire ? 'text-red-500 animate-pulse' : 'text-emerald-400'
+          }`}>
+            {!isConnected ? '--' : sensors.fire ? '🔥 FIRE DETECTED!' : 'SAFE'}
           </p>
         </div>
 
-        {/* 2. Motion IR Sensor Widget */}
+        {/* 2. Intrusion Detection Widget */}
         <div className={`${bgColor} rounded-2xl border transition-all ${
-          sensors.pir ? 'border-red-500 bg-red-500/10 shadow-lg shadow-red-500/20' : borderCard(theme)
+          isConnected && sensors.pir ? 'border-red-500 bg-red-500/10 shadow-lg shadow-red-500/20' : borderCard(theme)
         } p-5`}>
           <div className="flex items-center justify-between">
             <div className="text-4xl">👁️</div>
-            <div className={`w-3.5 h-3.5 rounded-full ${sensors.pir ? 'bg-red-500 animate-ping' : 'bg-emerald-500'}`} />
+            <div className={`w-3.5 h-3.5 rounded-full ${
+              !isConnected ? 'bg-slate-600' : sensors.pir ? 'bg-red-500 animate-ping' : 'bg-emerald-500'
+            }`} />
           </div>
-          <p className="text-xs font-semibold text-slate-400 uppercase mt-4">Intrusion Detection (D27)</p>
-          <p className={`text-2xl font-bold mt-1 ${sensors.pir ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>
-            {sensors.pir ? '🚨 MOTION DETECTED' : 'ALL CLEAR'}
+          <p className="text-xs font-semibold text-slate-400 uppercase mt-4">Intrusion Detection</p>
+          <p className={`text-2xl font-bold mt-1 ${
+            !isConnected ? 'text-slate-500' : sensors.pir ? 'text-red-500 animate-pulse' : 'text-emerald-400'
+          }`}>
+            {!isConnected ? '--' : sensors.pir ? '🚨 MOTION DETECTED' : 'ALL CLEAR'}
           </p>
         </div>
 
-        {/* 3. MQ2 Gas Sensor Widget (Real AO Number + 2200 Threshold) */}
+        {/* 3. Gas Detection Widget */}
         <div className={`${bgColor} rounded-2xl border transition-all ${
           isGasHazard ? 'border-red-500 bg-red-500/10 shadow-lg shadow-red-500/20' : borderCard(theme)
         } p-5`}>
           <div className="flex items-center justify-between">
             <div className="text-4xl">💨</div>
-            <div className={`w-3.5 h-3.5 rounded-full ${isGasHazard ? 'bg-red-500 animate-ping' : 'bg-emerald-500'}`} />
+            <div className={`w-3.5 h-3.5 rounded-full ${
+              !isConnected ? 'bg-slate-600' : isGasHazard ? 'bg-red-500 animate-ping' : 'bg-emerald-500'
+            }`} />
           </div>
-          <p className="text-xs font-semibold text-slate-400 uppercase mt-4">Gas Detection (D33)</p>
+          <p className="text-xs font-semibold text-slate-400 uppercase mt-4">Gas Detection</p>
           <div className="mt-1 flex items-baseline justify-between">
-            <p className={`text-3xl font-black font-mono ${isGasHazard ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>
-              {sensors.raw_gas} <span className="text-xs font-normal text-slate-400">AO</span>
+            <p className={`text-3xl font-black font-mono ${
+              !isConnected ? 'text-slate-500' : isGasHazard ? 'text-red-500 animate-pulse' : 'text-emerald-400'
+            }`}>
+              {isConnected ? sensors.raw_gas : '--'} <span className="text-xs font-normal text-slate-400">AO</span>
             </p>
-            <span className="text-xs font-mono text-slate-400">({sensors.mq2_rating}/10)</span>
+            <span className="text-xs font-mono text-slate-400">
+              {isConnected ? `(${sensors.mq2_rating}/10)` : '(--/10)'}
+            </span>
           </div>
           <div className="mt-3 flex justify-between items-center text-xs font-mono text-slate-400 border-t border-slate-800 pt-2">
             <span>Threshold: 2200</span>
-            <span className={isGasHazard ? 'text-red-400 font-bold' : 'text-emerald-400'}>
-              {isGasHazard ? '🚨 HAZARD GAS!' : 'NORMAL AIR'}
+            <span className={!isConnected ? 'text-slate-500' : isGasHazard ? 'text-red-400 font-bold' : 'text-emerald-400'}>
+              {!isConnected ? 'NO DATA' : isGasHazard ? '🚨 HAZARD GAS!' : 'NORMAL AIR'}
             </span>
           </div>
         </div>
 
-        {/* 4. Large Water Level Sensor Widget with BIG CSS Fluid Beaker Tank Animation */}
+        {/* 4. River Overflow Detection Widget with Large CSS Fluid Beaker Animation */}
         <div className={`${bgColor} rounded-2xl border transition-all ${
           isWaterLow ? 'border-red-500 bg-red-500/10 shadow-lg shadow-red-500/20' : borderCard(theme)
         } p-5 col-span-1 md:col-span-2 lg:col-span-1`}>
@@ -175,15 +192,23 @@ export function SensorMonitor({ theme }: SensorMonitorProps) {
             <div className="flex-1">
               <div className="flex items-center justify-between">
                 <div className="text-3xl">🌊</div>
-                <div className={`w-3 h-3 rounded-full ${isWaterLow ? 'bg-red-500 animate-ping' : 'bg-cyan-400'}`} />
+                <div className={`w-3 h-3 rounded-full ${
+                  !isConnected ? 'bg-slate-600' : isWaterLow ? 'bg-red-500 animate-ping' : 'bg-cyan-400'
+                }`} />
               </div>
-              <p className="text-xs font-semibold text-slate-400 uppercase mt-3">River Overflow Detection (D34)</p>
-              <p className={`text-3xl font-black font-mono mt-1 ${isWaterLow ? 'text-red-500' : 'text-cyan-400'}`}>
-                {sensors.water}%
+              <p className="text-xs font-semibold text-slate-400 uppercase mt-3">River Overflow Detection</p>
+              <p className={`text-3xl font-black font-mono mt-1 ${
+                !isConnected ? 'text-slate-500' : isWaterLow ? 'text-red-500' : 'text-cyan-400'
+              }`}>
+                {isConnected ? `${sensors.water}%` : '--'}
               </p>
-              <p className="text-xs text-slate-500 font-mono mt-0.5">ADC: {sensors.raw_water}</p>
-              <p className={`text-xs font-bold mt-2 ${isWaterLow ? 'text-red-400 animate-pulse' : 'text-emerald-400'}`}>
-                {isWaterLow ? '🚨 WATER LEVEL LOW!' : 'LEVEL SAFE'}
+              <p className="text-xs text-slate-500 font-mono mt-0.5">
+                ADC: {isConnected ? sensors.raw_water : '--'}
+              </p>
+              <p className={`text-xs font-bold mt-2 ${
+                !isConnected ? 'text-slate-500' : isWaterLow ? 'text-red-400 animate-pulse' : 'text-emerald-400'
+              }`}>
+                {!isConnected ? 'NO DATA' : isWaterLow ? '🚨 WATER LEVEL LOW!' : 'LEVEL SAFE'}
               </p>
             </div>
 
@@ -204,10 +229,12 @@ export function SensorMonitor({ theme }: SensorMonitorProps) {
               {/* Fluid Water Level */}
               <div
                 className="w-full bg-gradient-to-t from-blue-700 via-blue-600 to-cyan-400 relative transition-all duration-700 ease-out z-10"
-                style={{ height: `${Math.min(100, Math.max(0, sensors.water))}%` }}
+                style={{ height: `${isConnected ? Math.min(100, Math.max(0, sensors.water)) : 0}%` }}
               >
                 {/* Fluid Surface Wave Animation */}
-                <div className="absolute -top-3 -left-1/2 w-[200%] h-5 bg-cyan-200/50 rounded-[38%] animate-wave-fluid pointer-events-none" />
+                {isConnected && (
+                  <div className="absolute -top-3 -left-1/2 w-[200%] h-5 bg-cyan-200/50 rounded-[38%] animate-wave-fluid pointer-events-none" />
+                )}
               </div>
             </div>
           </div>
