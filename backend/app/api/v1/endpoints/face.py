@@ -274,8 +274,15 @@ async def register_face(name: str = Form(...),
                 "message": "⚠️ No face detected in images. Please try again with clear face photos."
             }
         
-        # Combine embeddings (average them)
-        final_embedding = np.mean(embeddings, axis=0)
+        # Combine embeddings (average them safely with shape homogenization)
+        max_len = max(len(emb) for emb in embeddings)
+        padded_embeddings = []
+        for emb in embeddings:
+            if len(emb) < max_len:
+                emb = np.pad(emb, (0, max_len - len(emb)), mode='constant')
+            padded_embeddings.append(emb[:max_len])
+
+        final_embedding = np.mean(padded_embeddings, axis=0)
         final_embedding = final_embedding / (np.linalg.norm(final_embedding) + 1e-8)
         
         # Save embedding (I/O-bound, run in thread pool)

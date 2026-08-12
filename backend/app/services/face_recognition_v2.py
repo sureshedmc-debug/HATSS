@@ -165,7 +165,7 @@ def extract_face_region(frame: np.ndarray) -> tuple[np.ndarray | None, tuple | N
 
 
 def extract_embedding(frame: np.ndarray) -> np.ndarray | None:
-    """Extract high-precision feature embedding using ORB + Spatial Block Descriptor"""
+    """Extract fixed 448-dimensional high-precision feature embedding for any face image"""
     face_region, _ = extract_face_region(frame)
 
     if face_region is None:
@@ -178,34 +178,43 @@ def extract_embedding(frame: np.ndarray) -> np.ndarray | None:
 
         features = []
 
+        # 1. ORB Pooled Global Descriptors (32 mean + 32 max = 64 dims)
         if ORB is not None:
             kp, des = ORB.detectAndCompute(resized, None)
             if des is not None and len(des) > 0:
-                orb_vec = des.astype(np.float32).flatten()
-                orb_norm = np.linalg.norm(orb_vec)
-                if orb_norm > 0:
-                    features.append(orb_vec / orb_norm)
+                des_float = des.astype(np.float32)
+                orb_mean = np.mean(des_float, axis=0)  # 32 dims
+                orb_max = np.max(des_float, axis=0)    # 32 dims
+                features.extend(orb_mean / (np.linalg.norm(orb_mean) + 1e-8))
+                features.extend(orb_max / (np.linalg.norm(orb_max) + 1e-8))
+            else:
+                features.extend([0.0] * 64)
+        else:
+            features.extend([0.0] * 64)
 
+        # 2. Spatial Grid Histograms (4x4 grid x 16 bins = 256 dims)
         h, w = resized.shape
         grid_h, grid_w = h // 4, w // 4
-        spatial_hist = []
         for i in range(4):
             for j in range(4):
                 cell = resized[i*grid_h:(i+1)*grid_h, j*grid_w:(j+1)*grid_w]
                 hist = cv2.calcHist([cell], [0], None, [16], [0, 256]).flatten()
-                spatial_hist.extend(hist)
+                norm_hist = hist / (np.linalg.norm(hist) + 1e-8)
+                features.extend(norm_hist)
 
-        spatial_vec = np.array(spatial_hist, dtype=np.float32)
-        spatial_norm = np.linalg.norm(spatial_vec)
-        if spatial_norm > 0:
-            features.append(spatial_vec / spatial_norm)
+        # 3. LBP Local Texture Feature Histogram (128 dims)
+        # Compute radius=1 LBP-like gradient magnitude & direction
+        gx = cv2.Sobel(resized, cv2.CV_32F, 1, 0, ksize=3)
+        gy = cv2.Sobel(resized, cv2.CV_32F, 0, 1, ksize=3)
+        mag, angle = cv2.cartToPolar(gx, gy, angleInDegrees=True)
+        lbp_hist, _ = np.histogram(angle.flatten(), bins=128, range=(0, 360), weights=mag.flatten())
+        lbp_norm = lbp_hist.astype(np.float32) / (np.linalg.norm(lbp_hist) + 1e-8)
+        features.extend(lbp_norm)
 
-        if not features:
-            return None
-
-        fused = np.concatenate(features)
-        norm = np.linalg.norm(fused)
-        return fused / (norm + 1e-8)
+        # Final Fused Vector (Fixed 448 Dimensions)
+        vec = np.array(features, dtype=np.float32)
+        norm = np.linalg.norm(vec)
+        return vec / (norm + 1e-8)
 
     except Exception as e:
         print(f"❌ Embedding extraction error: {e}")
