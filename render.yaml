@@ -50,7 +50,7 @@ services:
         fromService:
           type: web
           name: hatss-backend
-          property: url
+          property: host
 
 databases:
   # 3. Database (PostgreSQL)
