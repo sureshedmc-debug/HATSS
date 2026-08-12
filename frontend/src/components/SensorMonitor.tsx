@@ -124,7 +124,7 @@ export function SensorMonitor({ theme }: SensorMonitorProps) {
             <div className="text-4xl">🔥</div>
             <div className={`w-3.5 h-3.5 rounded-full ${sensors.fire ? 'bg-red-500 animate-ping' : 'bg-emerald-500'}`} />
           </div>
-          <p className="text-xs font-semibold text-slate-400 uppercase mt-4">Flame / Fire Sensor (D32)</p>
+          <p className="text-xs font-semibold text-slate-400 uppercase mt-4">Flame Detection (D32)</p>
           <p className={`text-2xl font-bold mt-1 ${sensors.fire ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>
             {sensors.fire ? '🔥 FIRE DETECTED!' : 'SAFE'}
           </p>
@@ -138,7 +138,7 @@ export function SensorMonitor({ theme }: SensorMonitorProps) {
             <div className="text-4xl">👁️</div>
             <div className={`w-3.5 h-3.5 rounded-full ${sensors.pir ? 'bg-red-500 animate-ping' : 'bg-emerald-500'}`} />
           </div>
-          <p className="text-xs font-semibold text-slate-400 uppercase mt-4">IR Motion Sensor (D27)</p>
+          <p className="text-xs font-semibold text-slate-400 uppercase mt-4">Intrusion Detection (D27)</p>
           <p className={`text-2xl font-bold mt-1 ${sensors.pir ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>
             {sensors.pir ? '🚨 MOTION DETECTED' : 'ALL CLEAR'}
           </p>
@@ -152,7 +152,7 @@ export function SensorMonitor({ theme }: SensorMonitorProps) {
             <div className="text-4xl">💨</div>
             <div className={`w-3.5 h-3.5 rounded-full ${isGasHazard ? 'bg-red-500 animate-ping' : 'bg-emerald-500'}`} />
           </div>
-          <p className="text-xs font-semibold text-slate-400 uppercase mt-4">MQ2 Gas Sensor AO (D33)</p>
+          <p className="text-xs font-semibold text-slate-400 uppercase mt-4">Gas Detection (D33)</p>
           <div className="mt-1 flex items-baseline justify-between">
             <p className={`text-3xl font-black font-mono ${isGasHazard ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>
               {sensors.raw_gas} <span className="text-xs font-normal text-slate-400">AO</span>
@@ -174,10 +174,10 @@ export function SensorMonitor({ theme }: SensorMonitorProps) {
           <div className="flex items-center justify-between gap-4">
             <div className="flex-1">
               <div className="flex items-center justify-between">
-                <div className="text-3xl">💧</div>
+                <div className="text-3xl">🌊</div>
                 <div className={`w-3 h-3 rounded-full ${isWaterLow ? 'bg-red-500 animate-ping' : 'bg-cyan-400'}`} />
               </div>
-              <p className="text-xs font-semibold text-slate-400 uppercase mt-3">Water Level (D34)</p>
+              <p className="text-xs font-semibold text-slate-400 uppercase mt-3">River Overflow Detection (D34)</p>
               <p className={`text-3xl font-black font-mono mt-1 ${isWaterLow ? 'text-red-500' : 'text-cyan-400'}`}>
                 {sensors.water}%
               </p>
