@@ -77,7 +77,7 @@ async def analyze_frame(image: UploadFile = File(...)) -> dict:
     Returns:
         Face detection results with label and confidence
     """
-    global _current_face_status
+    global _current_face_status, _last_intrusion_saved_time
     
     try:
         # Read image from upload
@@ -127,9 +127,8 @@ async def analyze_frame(image: UploadFile = File(...)) -> dict:
         
         if len(known_embeddings) == 0:
             # No known faces registered yet - Treat face as INTRUDER & save snapshot
-            global _last_intrusion_saved_time
             now_ts = datetime.now(UTC).timestamp()
-            if '_last_intrusion_saved_time' not in globals() or (now_ts - _last_intrusion_saved_time) > 2.0:
+            if (now_ts - _last_intrusion_saved_time) > 2.0:
                 try:
                     intrusions_dir = Path("data/intruder_snaps")
                     intrusions_dir.mkdir(parents=True, exist_ok=True)
@@ -173,9 +172,8 @@ async def analyze_frame(image: UploadFile = File(...)) -> dict:
             }
         else:
             # INTRUDER DETECTED - Save snapshot (throttled to 1 image per 2 seconds)
-            global _last_intrusion_saved_time
             now_ts = datetime.now(UTC).timestamp()
-            if '_last_intrusion_saved_time' not in globals() or (now_ts - _last_intrusion_saved_time) > 2.0:
+            if (now_ts - _last_intrusion_saved_time) > 2.0:
                 try:
                     intrusions_dir = Path("data/intruder_snaps")
                     intrusions_dir.mkdir(parents=True, exist_ok=True)
