@@ -66,68 +66,39 @@ except Exception as e:
 
 
 def query_roboflow_face_detection(frame: np.ndarray) -> list[tuple]:
-    """Query Roboflow Cloud AI (face-behavier/15) for high-accuracy face & behavior detection"""
-    if not ROBOFLOW_API_KEY:
-        return []
-
-    try:
-        # Encode frame as JPEG base64
-        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-        b64_image = base64.b64encode(buffer).decode('utf-8')
-
-        response = requests.post(
-            ROBOFLOW_ENDPOINT,
-            data=b64_image,
-            headers={'Content-Type': 'application/x-www-form-urlencoded'},
-            timeout=2.5
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-            predictions = data.get("predictions", [])
-            detections = []
-            h, w = frame.shape[:2]
-
-            for pred in predictions:
-                # Roboflow returns center_x, center_y, width, height
-                cx, cy = pred.get("x", 0), pred.get("y", 0)
-                bw, bh = pred.get("width", 0), pred.get("height", 0)
-                
-                x1 = max(0, int(cx - bw / 2))
-                y1 = max(0, int(cy - bh / 2))
-                x2 = min(w, int(cx + bw / 2))
-                y2 = min(h, int(cy + bh / 2))
-
-                if x2 > x1 and y2 > y1:
-                    confidence = pred.get("confidence", 0.0)
-                    class_name = pred.get("class", "face")
-                    detections.append((x1, y1, x2, y2, confidence, class_name))
-
-            if detections:
-                print(f"🤖 Roboflow AI ({ROBOFLOW_MODEL_ID}) detected {len(detections)} face(s)")
-                return detections
-
-    except Exception as e:
-        print(f"⚠️ Roboflow API request fallback: {e}")
-
+    """Cloud API calls disabled to preserve credits. Using 100% offline local AI detection."""
     return []
 
 
 def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
-    """Detect all faces in frame using Roboflow Cloud AI with local YOLOv8 / Haar Cascade fallback"""
-    # 1. Try Roboflow Cloud AI
-    rf_detections = query_roboflow_face_detection(frame)
-    if rf_detections:
-        return [(d[0], d[1], d[2], d[3]) for d in rf_detections]
+    """100% Offline Local Face Detection (0 Cloud Credits Used, 0ms Latency)"""
+    detections = []
 
-    # 2. Local YOLOv8 Fallback
-    try:
-        if face_detector is not None:
-            results = face_detector(frame, verbose=False)
+    # 1. Primary: Local Haar Cascade Multi-Scale (Frontal Face)
+    if haar_cascade is not None:
+        try:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray = cv2.equalizeHist(gray)
+            faces = haar_cascade.detectMultiScale(
+                gray,
+                scaleFactor=1.08,
+                minNeighbors=4,
+                minSize=(30, 30),
+                flags=cv2.CASCADE_SCALE_IMAGE
+            )
+            for (x, y, w, h) in faces:
+                detections.append((int(x), int(y), int(x + w), int(y + h)))
+            if detections:
+                return detections
+        except Exception as e:
+            print(f"Haar Cascade error: {e}")
+
+    # 2. Secondary: Local YOLOv8 Engine
+    if face_detector is not None:
+        try:
+            results = face_detector(frame, verbose=False, conf=0.35)
             if len(results) > 0 and results[0].boxes is not None and len(results[0].boxes) > 0:
-                boxes = results[0].boxes
-                detections = []
-                for box in boxes:
+                for box in results[0].boxes:
                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
                     x1, y1 = max(0, x1), max(0, y1)
                     x2, y2 = min(frame.shape[1], x2), min(frame.shape[0], y2)
@@ -135,20 +106,8 @@ def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
                         detections.append((x1, y1, x2, y2))
                 if detections:
                     return detections
-    except Exception as e:
-        print(f"YOLOv8 detection error: {e}")
-
-    # 3. OpenCV Haar Cascade Fallback
-    try:
-        if haar_cascade is not None:
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = haar_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40))
-            detections = []
-            for (x, y, w, h) in faces:
-                detections.append((x, y, x + w, y + h))
-            return detections
-    except Exception as e:
-        print(f"Haar Cascade error: {e}")
+        except Exception as e:
+            print(f"YOLOv8 detection error: {e}")
 
     return []
 
