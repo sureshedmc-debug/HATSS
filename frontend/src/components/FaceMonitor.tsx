@@ -85,6 +85,8 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
     });
   };
 
+  const isAnalyzingRef = useRef(false);
+
   // Initialize camera
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -94,7 +96,7 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
     const initCamera = async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false 
         });
         
@@ -103,45 +105,55 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
           setCameraActive(true);
           setRegistrationStatus('');
 
+          // Instant 120ms polling with non-blocking in-flight request lock
           frameInterval = setInterval(() => {
-            if (canvasRef.current && videoRef.current) {
-              try {
-                const ctx = canvasRef.current.getContext('2d');
-                if (ctx) {
-                  ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
-                  canvasRef.current.toBlob(async (blob) => {
-                    if (blob && isMounted) {
-                      try {
-                        const formData = new FormData();
-                        formData.append('image', blob);
-                        const response = await fetch('/api/v1/face/analyze-frame', {
-                          method: 'POST',
-                          body: formData,
-                        });
-                        const data = await response.json();
-                        if (isMounted) {
-                          setFaceStatus({
-                            label: data.label || 'NO FACE',
-                            confidence: data.confidence || 0.0
-                          });
-
-                          if (data.boxes && data.frame_size) {
-                            drawBoundingBoxes(data.boxes, data.label || '', data.frame_size[0], data.frame_size[1]);
-                          } else {
-                            drawBoundingBoxes([], '', 0, 0);
-                          }
-                        }
-                      } catch (error) {
-                        console.error('Frame analysis error:', error);
-                      }
-                    }
-                  }, 'image/jpeg', 0.8);
-                }
-              } catch (error) {
-                console.error('Frame capture error:', error);
-              }
+            if (!canvasRef.current || !videoRef.current || isAnalyzingRef.current) {
+              return;
             }
-          }, 400);
+
+            try {
+              const ctx = canvasRef.current.getContext('2d');
+              if (ctx) {
+                isAnalyzingRef.current = true;
+                ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+                
+                canvasRef.current.toBlob(async (blob) => {
+                  if (blob && isMounted) {
+                    try {
+                      const formData = new FormData();
+                      formData.append('image', blob);
+                      const response = await fetch('/api/v1/face/analyze-frame', {
+                        method: 'POST',
+                        body: formData,
+                      });
+                      const data = await response.json();
+                      if (isMounted) {
+                        setFaceStatus({
+                          label: data.label || 'NO FACE',
+                          confidence: data.confidence || 0.0
+                        });
+
+                        if (data.boxes && data.frame_size) {
+                          drawBoundingBoxes(data.boxes, data.label || '', data.frame_size[0], data.frame_size[1]);
+                        } else {
+                          drawBoundingBoxes([], '', 0, 0);
+                        }
+                      }
+                    } catch (error) {
+                      console.error('Frame analysis error:', error);
+                    } finally {
+                      isAnalyzingRef.current = false;
+                    }
+                  } else {
+                    isAnalyzingRef.current = false;
+                  }
+                }, 'image/jpeg', 0.55);
+              }
+            } catch (error) {
+              isAnalyzingRef.current = false;
+              console.error('Frame capture error:', error);
+            }
+          }, 120);
         }
       } catch (error: any) {
         if (!isMounted) return;
@@ -335,7 +347,7 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
             </div>
           )}
         </div>
-        <canvas ref={canvasRef} width={1280} height={720} style={{ display: 'none' }} />
+        <canvas ref={canvasRef} width={640} height={480} style={{ display: 'none' }} />
       </div>
 
       {/* Camera Not Available Warning */}
