@@ -104,8 +104,12 @@ async def analyze_frame(image: UploadFile = File(...)) -> dict:
             return {
                 "label": "NO FACE",
                 "confidence": 0.0,
-                "faces_detected": 0
+                "faces_detected": 0,
+                "boxes": [],
+                "frame_size": [frame.shape[1], frame.shape[0]]
             }
+
+        boxes = [list(map(int, d)) for d in detections]
         
         # Extract embedding from first (largest) face (CPU-bound, run in thread pool)
         embedding = await asyncio.to_thread(extract_embedding, frame)
@@ -119,7 +123,9 @@ async def analyze_frame(image: UploadFile = File(...)) -> dict:
             return {
                 "label": "NO FACE",
                 "confidence": 0.0,
-                "faces_detected": len(detections)
+                "faces_detected": len(detections),
+                "boxes": boxes,
+                "frame_size": [frame.shape[1], frame.shape[0]]
             }
         
         # Load known faces (I/O-bound, run in thread pool)
@@ -149,7 +155,9 @@ async def analyze_frame(image: UploadFile = File(...)) -> dict:
                 "label": "INTRUDER",
                 "confidence": 0.95,
                 "faces_detected": len(detections),
-                "matched": False
+                "matched": False,
+                "boxes": boxes,
+                "frame_size": [frame.shape[1], frame.shape[0]]
             }
         
         # Match face (CPU-bound, run in thread pool)
@@ -168,7 +176,9 @@ async def analyze_frame(image: UploadFile = File(...)) -> dict:
                 "confidence": float(score),
                 "faces_detected": len(detections),
                 "matched": True,
-                "name": matched_name
+                "name": matched_name,
+                "boxes": boxes,
+                "frame_size": [frame.shape[1], frame.shape[0]]
             }
         else:
             # INTRUDER DETECTED - Save snapshot (throttled to 1 image per 2 seconds)
@@ -194,7 +204,9 @@ async def analyze_frame(image: UploadFile = File(...)) -> dict:
                 "label": "INTRUDER",
                 "confidence": float(score),
                 "faces_detected": len(detections),
-                "matched": False
+                "matched": False,
+                "boxes": boxes,
+                "frame_size": [frame.shape[1], frame.shape[0]]
             }
     
     except Exception as e:

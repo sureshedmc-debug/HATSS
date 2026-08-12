@@ -7,6 +7,7 @@ interface FaceMonitorProps {
 export function FaceMonitor({ theme }: FaceMonitorProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
   const [faceStatus, setFaceStatus] = useState({ label: 'NO FACE', confidence: 0.0 });
   const [knownCount, setKnownCount] = useState(0);
   const [intrusionCount, setIntrusionCount] = useState(0);
@@ -18,7 +19,73 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
   const [registrationFrameCount, setRegistrationFrameCount] = useState(0);
   const [registrationFrames, setRegistrationFrames] = useState<Blob[]>([]);
 
-  // Initialize camera - SIMPLIFIED
+  // Draw bounding boxes on overlay canvas
+  const drawBoundingBoxes = (boxes: number[][], label: string, origWidth: number, origHeight: number) => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+
+    const ctx = overlay.getContext('2d');
+    if (!ctx) return;
+
+    // Match overlay canvas size to displayed video size
+    overlay.width = overlay.clientWidth;
+    overlay.height = overlay.clientHeight;
+
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+    if (!boxes || boxes.length === 0 || !origWidth || !origHeight) return;
+
+    const scaleX = overlay.width / origWidth;
+    const scaleY = overlay.height / origHeight;
+
+    const isIntruder = label.includes('INTRUDER');
+    const isKnown = label.includes('KNOWN');
+
+    const strokeColor = isIntruder ? '#ef4444' : isKnown ? '#10b981' : '#3b82f6';
+    const bgColor = isIntruder ? 'rgba(239, 68, 68, 0.25)' : isKnown ? 'rgba(16, 185, 129, 0.25)' : 'rgba(59, 130, 246, 0.25)';
+
+    boxes.forEach(([x1, y1, x2, y2]) => {
+      // Account for mirrored video scaleX(-1)
+      const rectX = overlay.width - (x2 * scaleX);
+      const rectY = y1 * scaleY;
+      const rectW = (x2 - x1) * scaleX;
+      const rectH = (y2 - y1) * scaleY;
+
+      // Draw box background fill
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(rectX, rectY, rectW, rectH);
+
+      // Draw bounding box border
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(rectX, rectY, rectW, rectH);
+
+      // Draw corner highlights
+      const cornerLen = 15;
+      ctx.lineWidth = 5;
+      // Top-Left
+      ctx.beginPath(); ctx.moveTo(rectX, rectY + cornerLen); ctx.lineTo(rectX, rectY); ctx.lineTo(rectX + cornerLen, rectY); ctx.stroke();
+      // Top-Right
+      ctx.beginPath(); ctx.moveTo(rectX + rectW - cornerLen, rectY); ctx.lineTo(rectX + rectW, rectY); ctx.lineTo(rectX + rectW, rectY + cornerLen); ctx.stroke();
+      // Bottom-Left
+      ctx.beginPath(); ctx.moveTo(rectX, rectY + rectH - cornerLen); ctx.lineTo(rectX, rectY + rectH); ctx.lineTo(rectX + cornerLen, rectY + rectH); ctx.stroke();
+      // Bottom-Right
+      ctx.beginPath(); ctx.moveTo(rectX + rectW - cornerLen, rectY + rectH); ctx.lineTo(rectX + rectW, rectY + rectH); ctx.lineTo(rectX + rectW, rectY + rectH - cornerLen); ctx.stroke();
+
+      // Draw Label Tag
+      const text = isIntruder ? '🚨 INTRUDER DETECTED' : isKnown ? `✅ ${label}` : label;
+      ctx.font = 'bold 14px sans-serif';
+      const textWidth = ctx.measureText(text).width;
+
+      ctx.fillStyle = strokeColor;
+      ctx.fillRect(rectX, Math.max(0, rectY - 26), textWidth + 16, 26);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(text, rectX + 8, Math.max(18, rectY - 8));
+    });
+  };
+
+  // Initialize camera
   useEffect(() => {
     let stream: MediaStream | null = null;
     let isMounted = true;
@@ -26,23 +93,16 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
 
     const initCamera = async () => {
       try {
-        console.log('Attempting camera access...');
-        
-        // Request camera with no fancy constraints first
         stream = await navigator.mediaDevices.getUserMedia({ 
           video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
           audio: false 
         });
         
-        console.log('Camera stream obtained:', stream);
-        
         if (isMounted && videoRef.current) {
           videoRef.current.srcObject = stream;
-          console.log('Stream attached to video element');
           setCameraActive(true);
           setRegistrationStatus('');
 
-          // Start sending frames to backend for analysis (every 500ms)
           frameInterval = setInterval(() => {
             if (canvasRef.current && videoRef.current) {
               try {
@@ -64,6 +124,12 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
                             label: data.label || 'NO FACE',
                             confidence: data.confidence || 0.0
                           });
+
+                          if (data.boxes && data.frame_size) {
+                            drawBoundingBoxes(data.boxes, data.label || '', data.frame_size[0], data.frame_size[1]);
+                          } else {
+                            drawBoundingBoxes([], '', 0, 0);
+                          }
                         }
                       } catch (error) {
                         console.error('Frame analysis error:', error);
@@ -75,23 +141,11 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
                 console.error('Frame capture error:', error);
               }
             }
-          }, 500);
+          }, 400);
         }
       } catch (error: any) {
         if (!isMounted) return;
-        
-        console.error('❌ CAMERA ERROR:', error.name, error.message);
         setCameraActive(false);
-        
-        if (error.name === 'NotAllowedError') {
-          setRegistrationStatus('🔒 Permission Denied - Click "Allow Camera" button or check browser settings');
-        } else if (error.name === 'NotFoundError') {
-          setRegistrationStatus('❌ No camera found - Check if camera hardware is connected');
-        } else if (error.name === 'NotReadableError') {
-          setRegistrationStatus('⚠️ Camera is locked - Close Zoom, Teams, or other camera apps');
-        } else {
-          setRegistrationStatus(`Error: ${error.name} - ${error.message}`);
-        }
       }
     };
 
@@ -270,8 +324,13 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
             className={`w-full h-full object-cover ${cameraActive ? 'opacity-100' : 'opacity-50'}`}
             style={{ transform: 'scaleX(-1)' }}
           />
+          {/* Live Bounding Box Tracking Overlay */}
+          <canvas
+            ref={overlayRef}
+            className="absolute inset-0 w-full h-full pointer-events-none z-10"
+          />
           {!cameraActive && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-20">
               <p className="text-white text-center text-sm">🔒 Camera Permission Needed<br/><span className="text-xs text-slate-300">Click "Allow Camera" button above</span></p>
             </div>
           )}
