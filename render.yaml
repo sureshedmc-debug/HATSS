@@ -51,7 +51,6 @@ services:
           type: web
           name: hatss-backend
           property: url
-          envVarKey: VITE_API_BASE_URL
 
 databases:
   # 3. Database (PostgreSQL)
