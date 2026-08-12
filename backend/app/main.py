@@ -32,6 +32,14 @@ def create_application() -> FastAPI:
     )
 
     app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+    # Mount static directory for intruder snapshots
+    from fastapi.staticfiles import StaticFiles
+    from pathlib import Path
+    snaps_dir = Path("data/intruder_snaps")
+    snaps_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/intruder_snaps", StaticFiles(directory=snaps_dir), name="intruder_snaps")
+
     return app
 
 

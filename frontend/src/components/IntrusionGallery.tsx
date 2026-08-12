@@ -56,24 +56,30 @@ export function IntrusionGallery({ theme }: IntrusionGalleryProps) {
           <p className="text-sm text-emerald-600 font-medium">✅ No intrusions detected</p>
         ) : (
           <div className="grid grid-cols-2 gap-2 md:grid-cols-3 overflow-y-auto max-h-64">
-            {intrusions.map((image) => (
-              <a
-                key={image}
-                href={`/intruder_snaps/${image}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-lg overflow-hidden border border-red-500/30 hover:border-red-500 hover:shadow-lg transition"
-              >
-                <img
-                  src={`/intruder_snaps/${image}`}
-                  alt="Intrusion"
-                  className="w-full h-24 object-cover"
-                />
-                <div className="bg-red-500/10 p-1 text-center">
-                  <p className="text-xs text-red-500 font-mono">{image}</p>
-                </div>
-              </a>
-            ))}
+            {intrusions.map((image) => {
+              const imageUrl = `/api/v1/intrusions/snap/${image}`;
+              return (
+                <a
+                  key={image}
+                  href={imageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-lg overflow-hidden border border-red-500/30 hover:border-red-500 hover:shadow-lg transition group bg-slate-900/50"
+                >
+                  <img
+                    src={imageUrl}
+                    alt="Intruder Snapshot"
+                    className="w-full h-28 object-cover group-hover:scale-105 transition-transform duration-300"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = `/intruder_snaps/${image}`;
+                    }}
+                  />
+                  <div className="bg-red-500/10 p-1.5 text-center border-t border-red-500/20">
+                    <p className="text-[10px] text-red-400 font-mono truncate">{image}</p>
+                  </div>
+                </a>
+              );
+            })}
           </div>
         )}
       </div>

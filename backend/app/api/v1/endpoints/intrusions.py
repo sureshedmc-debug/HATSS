@@ -37,3 +37,14 @@ async def get_intrusion_metrics() -> dict:
         "latest_images": recent,
         "status": "active" if count > 0 else "clear"
     }
+
+
+@router.get("/snap/{filename}", summary="Get intrusion snap image")
+async def get_intrusion_snap(filename: str):
+    """Serve specific intrusion snapshot image file."""
+    from fastapi.responses import FileResponse
+    path = get_intrusion_image_path(filename)
+    if path and path.exists():
+        return FileResponse(path)
+    raise HTTPException(status_code=404, detail="Intrusion snapshot image not found")
+
