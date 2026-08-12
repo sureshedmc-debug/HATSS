@@ -1,5 +1,5 @@
 services:
-  # 1. Backend Service (FastAPI)
+  # 1. Backend Service (FastAPI Web Service)
   - type: web
     name: hatss-backend
     runtime: python
@@ -42,7 +42,6 @@ services:
   - type: web
     name: hatss-frontend
     runtime: static
-    plan: free
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
     envVars:
