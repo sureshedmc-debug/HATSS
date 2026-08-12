@@ -9,6 +9,12 @@ class SensorReading(BaseModel):
     fire: bool
     pir: bool
     gas: bool
+    raw_gas: int = 0
+    mq2_rating: int = 1
+    water: int = 0
+    raw_water: int = 0
+    buzzer: bool = False
+    muted: bool = False
     timestamp: datetime | None = None
 
 
@@ -17,5 +23,11 @@ class SensorStatus(BaseModel):
     fire: bool
     pir: bool
     gas: bool
+    raw_gas: int = 0
+    mq2_rating: int = 1
+    water: int = 0
+    raw_water: int = 0
+    buzzer: bool = False
+    muted: bool = False
     last_update: str
     status: str = "connected"
