@@ -123,55 +123,68 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
           setCameraActive(true);
           setRegistrationStatus('');
 
-          // Instant 120ms polling with non-blocking in-flight request lock
+          // Fast 220ms polling loop with AbortController timeout & compressed 480x360 payload
           frameInterval = setInterval(() => {
             if (!canvasRef.current || !videoRef.current || isAnalyzingRef.current) {
               return;
             }
 
             try {
-              const ctx = canvasRef.current.getContext('2d');
+              const canvas = canvasRef.current;
+              // Set canvas dimensions to 480x360 for light 12KB payload
+              canvas.width = 480;
+              canvas.height = 360;
+
+              const ctx = canvas.getContext('2d');
               if (ctx) {
                 isAnalyzingRef.current = true;
-                ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+                ctx.drawImage(videoRef.current, 0, 0, 480, 360);
                 
-                canvasRef.current.toBlob(async (blob) => {
+                canvas.toBlob(async (blob) => {
                   if (blob && isMounted) {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 1500);
+
                     try {
                       const formData = new FormData();
                       formData.append('image', blob);
                       const response = await fetch('/api/v1/face/analyze-frame', {
                         method: 'POST',
                         body: formData,
+                        signal: controller.signal
                       });
-                      const data = await response.json();
-                      if (isMounted) {
-                        setFaceStatus({
-                          label: data.label || 'NO FACE',
-                          confidence: data.confidence || 0.0
-                        });
+                      clearTimeout(timeoutId);
 
-                        if (data.frame_size) {
-                          drawBoundingBoxes(data.results || [], data.boxes || [], data.label || '', data.frame_size[0], data.frame_size[1]);
-                        } else {
-                          drawBoundingBoxes([], [], '', 0, 0);
+                      if (response.ok) {
+                        const data = await response.json();
+                        if (isMounted) {
+                          setFaceStatus({
+                            label: data.label || 'NO FACE',
+                            confidence: data.confidence || 0.0
+                          });
+
+                          if (data.frame_size) {
+                            drawBoundingBoxes(data.results || [], data.boxes || [], data.label || '', data.frame_size[0], data.frame_size[1]);
+                          } else {
+                            drawBoundingBoxes([], [], '', 0, 0);
+                          }
                         }
                       }
                     } catch (error) {
-                      console.error('Frame analysis error:', error);
+                      // Silently skip dropped/aborted frames
                     } finally {
+                      clearTimeout(timeoutId);
                       isAnalyzingRef.current = false;
                     }
                   } else {
                     isAnalyzingRef.current = false;
                   }
-                }, 'image/jpeg', 0.55);
+                }, 'image/jpeg', 0.45);
               }
             } catch (error) {
               isAnalyzingRef.current = false;
-              console.error('Frame capture error:', error);
             }
-          }, 120);
+          }, 220);
         }
       } catch (error: any) {
         if (!isMounted) return;
