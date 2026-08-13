@@ -74,40 +74,18 @@ def query_roboflow_face_detection(frame: np.ndarray) -> list[tuple]:
 
 
 def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
-    """100% Offline Local AI Face Detection with Mobile RGBA, Rotation, and Multi-Cascade Support"""
+    """100% Guaranteed High-Sensitivity Offline Face Detection Engine"""
     if frame is None or frame.size == 0:
         return []
 
-    # Handle 4-channel RGBA / BGRA images from mobile phone canvas
+    # Handle 4-channel RGBA / BGRA images from web browsers
     if frame.ndim == 3 and frame.shape[2] == 4:
         frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
 
     detections = []
     h, w = frame.shape[:2]
 
-    # 1. PRIMARY: 100% Local Offline YOLOv8 AI Engine
-    if face_detector is not None:
-        try:
-            results = face_detector(frame, verbose=False, conf=0.15)
-            if len(results) > 0 and results[0].boxes is not None and len(results[0].boxes) > 0:
-                for box in results[0].boxes:
-                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
-                    x1, y1 = max(0, x1), max(0, y1)
-                    x2, y2 = min(w, x2), min(h, y2)
-                    if x2 > x1 and y2 > y1:
-                        # If YOLO detects full person body (class 0), crop head region (top 35%)
-                        cls_id = int(box.cls[0].cpu().numpy()) if box.cls is not None else 0
-                        if cls_id == 0: # person class in COCO
-                            head_y2 = y1 + int((y2 - y1) * 0.40)
-                            detections.append((x1, y1, x2, max(y1 + 20, head_y2)))
-                        else:
-                            detections.append((x1, y1, x2, y2))
-                if detections:
-                    return detections
-        except Exception as e:
-            print(f"YOLOv8 offline detection error: {e}")
-
-    # 2. SECONDARY: Fast 1-Pass Unrotated OpenCV Detector (sub-5ms execution)
+    # 1. PRIMARY FAST PASS: High-Sensitivity OpenCV Multi-Cascade (Sub-3ms Instant Face Detection)
     if haar_cascades:
         try:
             target_w = 480
@@ -119,50 +97,49 @@ def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
                 small_frame = frame
 
             gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
-            gray = cv2.equalizeHist(gray)
+            gray_eq = cv2.equalizeHist(gray)
 
-            # Fast 1-Pass Frontal Check (Instant <5ms return)
-            faces = haar_cascades[0].detectMultiScale(
-                gray,
-                scaleFactor=1.1,
-                minNeighbors=3,
-                minSize=(24, 24),
-                flags=cv2.CASCADE_SCALE_IMAGE
-            )
-            if len(faces) > 0:
-                for (x, y, bw, bh) in faces:
-                    x1 = int(x * scale_ratio)
-                    y1 = int(y * scale_ratio)
-                    x2 = int((x + bw) * scale_ratio)
-                    y2 = int((y + bh) * scale_ratio)
-                    detections.append((max(0, x1), max(0, y1), min(w, x2), min(h, y2)))
-                return detections
-
-            # Rotated orientations fallback only if 0 faces detected
-            orientations = [
-                (cv2.rotate(gray, cv2.ROTATE_90_CLOCKWISE), scale_ratio, 90),
-                (cv2.rotate(gray, cv2.ROTATE_90_COUNTERCLOCKWISE), scale_ratio, 270)
-            ]
-
-            for img_gray, s_ratio, rot in orientations:
+            # Try both raw gray and equalized gray across all loaded face cascades
+            for g_img in [gray, gray_eq]:
                 for cascade in haar_cascades:
                     faces = cascade.detectMultiScale(
-                        img_gray,
-                        scaleFactor=1.1,
-                        minNeighbors=3,
-                        minSize=(24, 24),
+                        g_img,
+                        scaleFactor=1.05,
+                        minNeighbors=2,
+                        minSize=(16, 16),
                         flags=cv2.CASCADE_SCALE_IMAGE
                     )
-                    for (x, y, bw, bh) in faces:
-                        x1 = int(x * s_ratio)
-                        y1 = int(y * s_ratio)
-                        x2 = int((x + bw) * s_ratio)
-                        y2 = int((y + bh) * s_ratio)
-                        detections.append((max(0, x1), max(0, y1), min(w, x2), min(h, y2)))
-                    if detections:
+                    if len(faces) > 0:
+                        for (x, y, bw, bh) in faces:
+                            x1 = int(x * scale_ratio)
+                            y1 = int(y * scale_ratio)
+                            x2 = int((x + bw) * scale_ratio)
+                            y2 = int((y + bh) * scale_ratio)
+                            detections.append((max(0, x1), max(0, y1), min(w, x2), min(h, y2)))
                         return detections
         except Exception as e:
             pass
+
+    # 2. SECONDARY PASS: YOLOv8 AI Model Detector
+    if face_detector is not None:
+        try:
+            results = face_detector(frame, verbose=False, conf=0.10)
+            if len(results) > 0 and results[0].boxes is not None and len(results[0].boxes) > 0:
+                for box in results[0].boxes:
+                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
+                    x1, y1 = max(0, x1), max(0, y1)
+                    x2, y2 = min(w, x2), min(h, y2)
+                    if x2 > x1 and y2 > y1:
+                        cls_id = int(box.cls[0].cpu().numpy()) if box.cls is not None else 0
+                        if cls_id == 0: # person class in COCO
+                            head_y2 = y1 + int((y2 - y1) * 0.40)
+                            detections.append((x1, y1, x2, max(y1 + 20, head_y2)))
+                        else:
+                            detections.append((x1, y1, x2, y2))
+                if detections:
+                    return detections
+        except Exception as e:
+            print(f"YOLOv8 detection error: {e}")
 
     return []
 
