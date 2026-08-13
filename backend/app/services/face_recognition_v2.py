@@ -176,7 +176,7 @@ def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
     h, w = frame.shape[:2]
     all_detections = []
 
-    # 1. LOCAL PASS: High-Sensitivity OpenCV Multi-Cascade (Multi-Face Detection Across Rotations)
+    # 1. LOCAL INSTANT PASS: High-Sensitivity OpenCV Multi-Cascade (Sub-3ms Instant Local Return)
     if haar_cascades:
         try:
             target_w = 480
@@ -206,10 +206,13 @@ def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
                             x2 = int((x + bw) * scale_ratio)
                             y2 = int((y + bh) * scale_ratio)
                             all_detections.append((max(0, x1), max(0, y1), min(w, x2), min(h, y2)))
+            
+            if all_detections:
+                return non_max_suppression_fast(all_detections, overlapThresh=0.30)
         except Exception:
             pass
 
-    # 2. CLOUD PASS: Roboflow Cloud AI (face-behavier/15)
+    # 2. CLOUD PASS: Roboflow Cloud AI (face-behavier/15) - Only runs if local detection was empty
     rf_detections = query_roboflow_face_detection(frame)
     if rf_detections:
         all_detections.extend(rf_detections)

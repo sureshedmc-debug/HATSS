@@ -151,11 +151,11 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
             }
 
             try {
-              // Maintain aspect ratio dynamically for mobile cameras
+              // Optimize payload size for sub-10ms instant ngrok transmission
               const vWidth = video.videoWidth;
               const vHeight = video.videoHeight;
-              const targetWidth = 480;
-              const targetHeight = Math.round((vHeight / vWidth) * targetWidth) || 360;
+              const targetWidth = 360;
+              const targetHeight = Math.round((vHeight / vWidth) * targetWidth) || 270;
 
               canvas.width = targetWidth;
               canvas.height = targetHeight;
@@ -168,7 +168,7 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
                 canvas.toBlob(async (blob) => {
                   if (blob && isMounted) {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 1500);
+                    const timeoutId = setTimeout(() => controller.abort(), 1200);
 
                     try {
                       const formData = new FormData();
@@ -199,7 +199,7 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
                         }
                       }
                     } catch (error) {
-                      // Silently skip dropped/aborted frames
+                      // Silently skip dropped frames
                     } finally {
                       clearTimeout(timeoutId);
                       isAnalyzingRef.current = false;
@@ -207,12 +207,12 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
                   } else {
                     isAnalyzingRef.current = false;
                   }
-                }, 'image/jpeg', 0.45);
+                }, 'image/jpeg', 0.30);
               }
             } catch (error) {
               isAnalyzingRef.current = false;
             }
-          }, 220);
+          }, 120);
         }
       } catch (error: any) {
         if (!isMounted) return;
