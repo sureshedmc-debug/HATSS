@@ -74,51 +74,17 @@ def query_roboflow_face_detection(frame: np.ndarray) -> list[tuple]:
 
 
 def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
-    """100% Offline Multi-Cascade High-Accuracy Local Face Detection"""
+    """100% Offline Local AI Face Detection using Primary YOLOv8 + Multi-Cascade Fallback (0 API Keys Used)"""
     if frame is None or frame.size == 0:
         return []
 
     detections = []
     h, w = frame.shape[:2]
 
-    # 1. Multi-Cascade Detection with smooth bilinear downscaling
-    if haar_cascades:
-        target_w = 512
-        if w > target_w:
-            scale_ratio = w / float(target_w)
-            target_h = int(h / scale_ratio)
-            small_frame = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
-        else:
-            scale_ratio = 1.0
-            small_frame = frame
-
-        gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
-        gray = cv2.equalizeHist(gray)
-
-        for cascade in haar_cascades:
-            try:
-                faces = cascade.detectMultiScale(
-                    gray,
-                    scaleFactor=1.08,
-                    minNeighbors=4,
-                    minSize=(28, 28),
-                    flags=cv2.CASCADE_SCALE_IMAGE
-                )
-                for (x, y, bw, bh) in faces:
-                    x1 = int(x * scale_ratio)
-                    y1 = int(y * scale_ratio)
-                    x2 = int((x + bw) * scale_ratio)
-                    y2 = int((y + bh) * scale_ratio)
-                    detections.append((max(0, x1), max(0, y1), min(w, x2), min(h, y2)))
-                if detections:
-                    return detections
-            except Exception as e:
-                pass
-
-    # 2. Secondary: Local YOLOv8 Engine
+    # 1. PRIMARY: 100% Local Offline YOLOv8 AI Engine
     if face_detector is not None:
         try:
-            results = face_detector(frame, verbose=False, conf=0.30)
+            results = face_detector(frame, verbose=False, conf=0.25)
             if len(results) > 0 and results[0].boxes is not None and len(results[0].boxes) > 0:
                 for box in results[0].boxes:
                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
@@ -129,7 +95,41 @@ def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
                 if detections:
                     return detections
         except Exception as e:
-            print(f"YOLOv8 detection error: {e}")
+            print(f"YOLOv8 offline detection error: {e}")
+
+    # 2. SECONDARY: Local Offline Multi-Cascade OpenCV Detector
+    if haar_cascades:
+        try:
+            target_w = 512
+            if w > target_w:
+                scale_ratio = w / float(target_w)
+                target_h = int(h / scale_ratio)
+                small_frame = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
+            else:
+                scale_ratio = 1.0
+                small_frame = frame
+
+            gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
+            gray = cv2.equalizeHist(gray)
+
+            for cascade in haar_cascades:
+                faces = cascade.detectMultiScale(
+                    gray,
+                    scaleFactor=1.08,
+                    minNeighbors=3,
+                    minSize=(24, 24),
+                    flags=cv2.CASCADE_SCALE_IMAGE
+                )
+                for (x, y, bw, bh) in faces:
+                    x1 = int(x * scale_ratio)
+                    y1 = int(y * scale_ratio)
+                    x2 = int((x + bw) * scale_ratio)
+                    y2 = int((y + bh) * scale_ratio)
+                    detections.append((max(0, x1), max(0, y1), min(w, x2), min(h, y2)))
+                if detections:
+                    return detections
+        except Exception as e:
+            pass
 
     return []
 
