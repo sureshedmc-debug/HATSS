@@ -35,7 +35,7 @@ for sample_name in ["Krishang Jain.npy", "Kiri.npy"]:
 
 # Initialize Local Detectors
 face_detector = None
-haar_cascade = None
+haar_cascades = []
 
 try:
     if Path("yolov8n-face.pt").exists():
@@ -48,14 +48,17 @@ except Exception as e:
     print(f"⚠️ YOLOv8 initialization skipped: {e}")
     face_detector = None
 
-try:
-    cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-    if os.path.exists(cascade_path):
-        haar_cascade = cv2.CascadeClassifier(cascade_path)
-        print("✅ OpenCV Haar Cascade Detector Loaded")
-except Exception as e:
-    print(f"⚠️ Haar Cascade initialization failed: {e}")
-    haar_cascade = None
+for cascade_name in ["haarcascade_frontalface_default.xml", "haarcascade_frontalface_alt2.xml", "haarcascade_profileface.xml"]:
+    try:
+        path = cv2.data.haarcascades + cascade_name
+        if os.path.exists(path):
+            c = cv2.CascadeClassifier(path)
+            if not c.empty():
+                haar_cascades.append(c)
+    except Exception:
+        pass
+
+print(f"✅ OpenCV Loaded {len(haar_cascades)} Multi-Cascade Detectors")
 
 try:
     ORB = cv2.ORB_create(nfeatures=1000, scaleFactor=1.2, nlevels=8)
@@ -71,54 +74,51 @@ def query_roboflow_face_detection(frame: np.ndarray) -> list[tuple]:
 
 
 def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
-    """100% Offline Ultra-Fast Local Face Detection (<3ms Latency)"""
+    """100% Offline Multi-Cascade High-Accuracy Local Face Detection"""
     if frame is None or frame.size == 0:
         return []
 
     detections = []
     h, w = frame.shape[:2]
 
-    # 1. Ultra-Fast Primary: Downscaled Haar Cascade (Runs in ~3ms!)
-    if haar_cascade is not None:
-        try:
-            # Resize frame for ultra-fast multi-scale detection if width > 360
-            target_w = 360
-            if w > target_w:
-                scale_ratio = w / float(target_w)
-                target_h = int(h / scale_ratio)
-                small_frame = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
-            else:
-                scale_ratio = 1.0
-                small_frame = frame
+    # 1. Multi-Cascade Detection with smooth bilinear downscaling
+    if haar_cascades:
+        target_w = 512
+        if w > target_w:
+            scale_ratio = w / float(target_w)
+            target_h = int(h / scale_ratio)
+            small_frame = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
+        else:
+            scale_ratio = 1.0
+            small_frame = frame
 
-            gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
-            gray = cv2.equalizeHist(gray)
+        gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.equalizeHist(gray)
 
-            faces = haar_cascade.detectMultiScale(
-                gray,
-                scaleFactor=1.1,
-                minNeighbors=3,
-                minSize=(24, 24),
-                flags=cv2.CASCADE_SCALE_IMAGE
-            )
-
-            for (x, y, bw, bh) in faces:
-                # Scale coordinates back up to original frame dimensions
-                x1 = int(x * scale_ratio)
-                y1 = int(y * scale_ratio)
-                x2 = int((x + bw) * scale_ratio)
-                y2 = int((y + bh) * scale_ratio)
-                detections.append((max(0, x1), max(0, y1), min(w, x2), min(h, y2)))
-
-            if detections:
-                return detections
-        except Exception as e:
-            print(f"Haar Cascade error: {e}")
+        for cascade in haar_cascades:
+            try:
+                faces = cascade.detectMultiScale(
+                    gray,
+                    scaleFactor=1.08,
+                    minNeighbors=4,
+                    minSize=(28, 28),
+                    flags=cv2.CASCADE_SCALE_IMAGE
+                )
+                for (x, y, bw, bh) in faces:
+                    x1 = int(x * scale_ratio)
+                    y1 = int(y * scale_ratio)
+                    x2 = int((x + bw) * scale_ratio)
+                    y2 = int((y + bh) * scale_ratio)
+                    detections.append((max(0, x1), max(0, y1), min(w, x2), min(h, y2)))
+                if detections:
+                    return detections
+            except Exception as e:
+                pass
 
     # 2. Secondary: Local YOLOv8 Engine
     if face_detector is not None:
         try:
-            results = face_detector(frame, verbose=False, conf=0.35)
+            results = face_detector(frame, verbose=False, conf=0.30)
             if len(results) > 0 and results[0].boxes is not None and len(results[0].boxes) > 0:
                 for box in results[0].boxes:
                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
@@ -245,7 +245,7 @@ def load_embeddings() -> tuple[np.ndarray, list[str]]:
 
 
 def match_face(known_embeddings: np.ndarray, known_names: list[str],
-               test_embedding: np.ndarray, threshold: float = 0.78) -> tuple[bool, str, float]:
+               test_embedding: np.ndarray, threshold: float = 0.65) -> tuple[bool, str, float]:
     """Match test embedding against known faces using high-precision cosine similarity"""
     if known_embeddings is None or len(known_embeddings) == 0:
         return False, "UNKNOWN", 0.0
