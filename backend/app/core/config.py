@@ -26,8 +26,8 @@ class Settings(BaseSettings):
     docs_enabled: bool = False
     api_v1_prefix: str = "/api/v1"
 
-    cors_origins: list[AnyHttpUrl | str] = [AnyHttpUrl("http://localhost:5173")]
-    trusted_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
+    cors_origins: list[AnyHttpUrl | str] = ["*"]
+    trusted_hosts: list[str] = ["*"]
 
     copilot_enabled: bool = False
     copilot_base_url: str = "http://127.0.0.1:11434"
