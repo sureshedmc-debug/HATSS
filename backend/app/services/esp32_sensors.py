@@ -7,10 +7,10 @@ sensor_state = {
     "fire": False,
     "pir": False,
     "gas": False,
-    "raw_gas": 400,
-    "mq2_rating": 1,
-    "water": 50,
-    "raw_water": 2400,
+    "raw_gas": 0,
+    "mq2_rating": 0,
+    "water": 0,
+    "raw_water": 0,
     "buzzer": False,
     "muted": False,
     "last_update": "Not received yet",
@@ -18,8 +18,8 @@ sensor_state = {
 }
 
 
-def update_sensors(fire: bool, pir: bool, gas: bool, raw_gas: int = 400, mq2_rating: int = 1,
-                   water: int = 50, raw_water: int = 2400, buzzer: bool = False, muted: bool = False) -> dict:
+def update_sensors(fire: bool, pir: bool, gas: bool, raw_gas: int = 0, mq2_rating: int = 0,
+                   water: int = 0, raw_water: int = 0, buzzer: bool = False, muted: bool = False) -> dict:
     """Update sensor readings from ESP32."""
     global sensor_state
     
@@ -49,6 +49,14 @@ ESP32_GET_ENDPOINTS = [
     "http://192.168.4.1/read"
 ]
 
+def extract_val(data: dict, keys: list, default):
+    """Safely extract value from dict trying multiple keys without falsy 0 bug"""
+    for k in keys:
+        if k in data and data[k] is not None:
+            return data[k]
+    return default
+
+
 def fetch_esp32_http_get() -> bool:
     """Proactively fetch live sensor JSON from ESP32 IP 192.168.4.1 via HTTP GET"""
     for url in ESP32_GET_ENDPOINTS:
@@ -58,16 +66,27 @@ def fetch_esp32_http_get() -> bool:
                 if resp.status == 200:
                     body = resp.read().decode('utf-8')
                     data = json.loads(body)
+                    
+                    fire_val = bool(extract_val(data, ['fire', 'flame'], False))
+                    pir_val = bool(extract_val(data, ['pir', 'ir', 'motion'], False))
+                    gas_val = bool(extract_val(data, ['gas'], False))
+                    raw_gas_val = int(extract_val(data, ['raw_mq2', 'raw_gas', 'mq2', 'raw_ao'], 0))
+                    mq2_rating_val = int(extract_val(data, ['mq2_rating'], 0))
+                    water_val = int(extract_val(data, ['water', 'water_level', 'water_pct'], 0))
+                    raw_water_val = int(extract_val(data, ['raw_water', 'water_raw', 'raw_soil'], 0))
+                    buzzer_val = bool(extract_val(data, ['buzzer'], False))
+                    muted_val = bool(extract_val(data, ['muted'], False))
+
                     update_sensors(
-                        fire=data.get('fire') or data.get('flame') or False,
-                        pir=data.get('pir') or data.get('ir') or data.get('motion') or False,
-                        gas=data.get('gas') or False,
-                        raw_gas=data.get('raw_mq2') or data.get('raw_gas') or data.get('mq2') or 400,
-                        mq2_rating=data.get('mq2_rating') or 1,
-                        water=data.get('water') or 50,
-                        raw_water=data.get('raw_water') or 2400,
-                        buzzer=data.get('buzzer') or False,
-                        muted=data.get('muted') or False
+                        fire=fire_val,
+                        pir=pir_val,
+                        gas=gas_val,
+                        raw_gas=raw_gas_val,
+                        mq2_rating=mq2_rating_val,
+                        water=water_val,
+                        raw_water=raw_water_val,
+                        buzzer=buzzer_val,
+                        muted=muted_val
                     )
                     return True
         except Exception:
