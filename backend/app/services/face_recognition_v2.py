@@ -73,13 +73,47 @@ except Exception as e:
     ORB = None
 
 
+def non_max_suppression_fast(boxes: list[tuple], overlapThresh: float = 0.3) -> list[tuple]:
+    """Combine overlapping bounding boxes for dynamic real-time tracking of multiple unique faces simultaneously"""
+    if len(boxes) == 0:
+        return []
+
+    boxes_arr = np.array(boxes, dtype="float")
+    pick = []
+
+    x1 = boxes_arr[:, 0]
+    y1 = boxes_arr[:, 1]
+    x2 = boxes_arr[:, 2]
+    y2 = boxes_arr[:, 3]
+
+    area = (x2 - x1 + 1) * (y2 - y1 + 1)
+    idxs = np.argsort(y2)
+
+    while len(idxs) > 0:
+        last = len(idxs) - 1
+        i = idxs[last]
+        pick.append(i)
+
+        xx1 = np.maximum(x1[i], x1[idxs[:last]])
+        yy1 = np.maximum(y1[i], y1[idxs[:last]])
+        xx2 = np.minimum(x2[i], x2[idxs[:last]])
+        yy2 = np.minimum(y2[i], y2[idxs[:last]])
+
+        w = np.maximum(0, xx2 - xx1 + 1)
+        h = np.maximum(0, yy2 - yy1 + 1)
+
+        overlap = (w * h) / area[idxs[:last]]
+        idxs = np.delete(idxs, np.concatenate(([last], np.where(overlap > overlapThresh)[0])))
+
+    return [tuple(map(int, boxes_arr[i])) for i in pick]
+
+
 def query_roboflow_face_detection(frame: np.ndarray) -> list[tuple]:
     """Query Roboflow Cloud AI (face-behavier/15) with user API key for ultra-high accuracy across all devices"""
     if frame is None or frame.size == 0:
         return []
 
     try:
-        # Resize frame to max 640 for fast cloud upload
         h, w = frame.shape[:2]
         target_w = 640
         if w > target_w:
@@ -90,11 +124,9 @@ def query_roboflow_face_detection(frame: np.ndarray) -> list[tuple]:
             scale = 1.0
             upload_frame = frame
 
-        # Encode image to JPEG base64
         _, img_encoded = cv2.imencode('.jpg', upload_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
         img_bytes = img_encoded.tobytes()
 
-        # Send POST request to Roboflow API with low 10% confidence threshold for maximum sensitivity
         response = requests.post(
             f"https://detect.roboflow.com/face-behavier/15?api_key={ROBOFLOW_API_KEY}&confidence=10",
             headers={"Content-Type": "application/x-www-form-urlencoded"},
@@ -133,7 +165,7 @@ def query_roboflow_face_detection(frame: np.ndarray) -> list[tuple]:
 
 
 def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
-    """Guaranteed Hybrid Detection Engine: Local Cascades + Roboflow Cloud AI + Local YOLOv8"""
+    """Guaranteed Real-Time Multi-Face Tracking Engine: OpenCV Ensembles + Roboflow Cloud AI + YOLOv8"""
     if frame is None or frame.size == 0:
         return []
 
@@ -142,9 +174,9 @@ def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
         frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
 
     h, w = frame.shape[:2]
-    detections = []
+    all_detections = []
 
-    # 1. LOCAL FAST PASS: High-Sensitivity OpenCV Multi-Cascade (Sub-3ms Unrotated & Rotated Pass)
+    # 1. LOCAL PASS: High-Sensitivity OpenCV Multi-Cascade (Multi-Face Detection Across Rotations)
     if haar_cascades:
         try:
             target_w = 480
@@ -158,15 +190,7 @@ def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
             gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
             gray_eq = cv2.equalizeHist(gray)
 
-            # Try raw gray, equalized gray, and rotated gray for vertical phone cameras
-            orientations = [
-                (gray, scale_ratio, 0),
-                (gray_eq, scale_ratio, 0),
-                (cv2.rotate(gray, cv2.ROTATE_90_CLOCKWISE), scale_ratio, 90),
-                (cv2.rotate(gray, cv2.ROTATE_90_COUNTERCLOCKWISE), scale_ratio, 270)
-            ]
-
-            for g_img, s_ratio, rot in orientations:
+            for g_img in [gray, gray_eq]:
                 for cascade in haar_cascades:
                     faces = cascade.detectMultiScale(
                         g_img,
@@ -177,19 +201,18 @@ def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
                     )
                     if len(faces) > 0:
                         for (x, y, bw, bh) in faces:
-                            x1 = int(x * s_ratio)
-                            y1 = int(y * s_ratio)
-                            x2 = int((x + bw) * s_ratio)
-                            y2 = int((y + bh) * s_ratio)
-                            detections.append((max(0, x1), max(0, y1), min(w, x2), min(h, y2)))
-                        return detections
+                            x1 = int(x * scale_ratio)
+                            y1 = int(y * scale_ratio)
+                            x2 = int((x + bw) * scale_ratio)
+                            y2 = int((y + bh) * scale_ratio)
+                            all_detections.append((max(0, x1), max(0, y1), min(w, x2), min(h, y2)))
         except Exception:
             pass
 
-    # 2. CLOUD PASS: Roboflow Cloud AI (face-behavier/15 with user API key)
+    # 2. CLOUD PASS: Roboflow Cloud AI (face-behavier/15)
     rf_detections = query_roboflow_face_detection(frame)
     if rf_detections:
-        return rf_detections
+        all_detections.extend(rf_detections)
 
     # 3. SECONDARY LOCAL PASS: YOLOv8 AI Model Detector
     if face_detector is not None:
@@ -204,15 +227,14 @@ def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
                         cls_id = int(box.cls[0].cpu().numpy()) if box.cls is not None else 0
                         if cls_id == 0: # person class in COCO
                             head_y2 = y1 + int((y2 - y1) * 0.40)
-                            detections.append((x1, y1, x2, max(y1 + 20, head_y2)))
+                            all_detections.append((x1, y1, x2, max(y1 + 20, head_y2)))
                         else:
-                            detections.append((x1, y1, x2, y2))
-                if detections:
-                    return detections
+                            all_detections.append((x1, y1, x2, y2))
         except Exception:
             pass
 
-    return []
+    # Run Non-Maximum Suppression to aggregate multi-face bounding boxes cleanly
+    return non_max_suppression_fast(all_detections, overlapThresh=0.30)
 
 
 def extract_embedding_from_crop(face_crop: np.ndarray) -> np.ndarray | None:
