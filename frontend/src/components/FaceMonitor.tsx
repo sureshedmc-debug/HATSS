@@ -128,25 +128,42 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
         
         if (isMounted && videoRef.current) {
           videoRef.current.srcObject = stream;
+          try {
+            await videoRef.current.play();
+          } catch (e) {
+            console.warn('Video play deferred:', e);
+          }
           setCameraActive(true);
           setRegistrationStatus('');
 
-          // Fast 220ms polling loop with AbortController timeout & compressed 480x360 payload
+          // Fast 220ms polling loop with video readiness check & mobile portrait handling
           frameInterval = setInterval(() => {
-            if (!canvasRef.current || !videoRef.current || isAnalyzingRef.current) {
+            const video = videoRef.current;
+            const canvas = canvasRef.current;
+
+            if (!canvas || !video || isAnalyzingRef.current) {
+              return;
+            }
+
+            // CRITICAL MOBILE CHECK: Ensure video stream is actually playing with non-zero dimensions
+            if (!video.videoWidth || !video.videoHeight || video.paused || video.ended) {
               return;
             }
 
             try {
-              const canvas = canvasRef.current;
-              // Set canvas dimensions to 480x360 for light 12KB payload
-              canvas.width = 480;
-              canvas.height = 360;
+              // Maintain aspect ratio dynamically for mobile cameras
+              const vWidth = video.videoWidth;
+              const vHeight = video.videoHeight;
+              const targetWidth = 480;
+              const targetHeight = Math.round((vHeight / vWidth) * targetWidth) || 360;
+
+              canvas.width = targetWidth;
+              canvas.height = targetHeight;
 
               const ctx = canvas.getContext('2d');
               if (ctx) {
                 isAnalyzingRef.current = true;
-                ctx.drawImage(videoRef.current, 0, 0, 480, 360);
+                ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
                 
                 canvas.toBlob(async (blob) => {
                   if (blob && isMounted) {
