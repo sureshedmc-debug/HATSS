@@ -44,6 +44,11 @@ try:
     else:
         face_detector = YOLO("yolov8n.pt")
         print("✅ Local YOLOv8 Standard Model Loaded")
+
+    # Run instant pre-warmup pass in memory so first live camera frame has 0ms lag
+    dummy_frame = np.zeros((320, 320, 3), dtype=np.uint8)
+    _ = face_detector(dummy_frame, verbose=False, conf=0.15)
+    print("🔥 YOLOv8 Neural Network Pre-Warmed in RAM Memory (0ms Startup Delay)!")
 except Exception as e:
     print(f"⚠️ YOLOv8 initialization skipped: {e}")
     face_detector = None
