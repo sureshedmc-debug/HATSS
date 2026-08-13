@@ -191,34 +191,6 @@ async def analyze_frame(image: UploadFile = File(...)) -> dict:
             "boxes": [r["box"] for r in face_results],
             "frame_size": [frame.shape[1], frame.shape[0]]
         }
-        else:
-            # INTRUDER DETECTED - Save snapshot (throttled to 1 image per 2 seconds)
-            now_ts = datetime.now(UTC).timestamp()
-            if (now_ts - _last_intrusion_saved_time) > 2.0:
-                try:
-                    intrusions_dir = Path("data/intruder_snaps")
-                    intrusions_dir.mkdir(parents=True, exist_ok=True)
-                    timestamp = int(now_ts)
-                    intrusion_path = intrusions_dir / f"{timestamp}.jpg"
-                    await asyncio.to_thread(cv2.imwrite, str(intrusion_path), frame)
-                    _last_intrusion_saved_time = now_ts
-                    print(f"🚨 Intruder photo saved: {intrusion_path}")
-                except Exception as e:
-                    print(f"⚠️ Failed to save intrusion photo: {e}")
-            
-            _current_face_status = {
-                "label": "INTRUDER",
-                "confidence": float(score),
-                "last_updated": datetime.now(UTC)
-            }
-            return {
-                "label": "INTRUDER",
-                "confidence": float(score),
-                "faces_detected": len(detections),
-                "matched": False,
-                "boxes": boxes,
-                "frame_size": [frame.shape[1], frame.shape[0]]
-            }
     
     except Exception as e:
         _current_face_status = {
