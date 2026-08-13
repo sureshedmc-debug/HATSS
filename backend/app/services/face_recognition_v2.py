@@ -206,84 +206,87 @@ def extract_embedding(frame: np.ndarray) -> np.ndarray | None:
     return extract_embedding_from_crop(face_region)
 
 
-def save_embedding(name: str, embedding: np.ndarray) -> bool:
-    """Save face embedding to file"""
+def save_embedding(name: str, embeddings: list[np.ndarray] | np.ndarray) -> bool:
+    """Save face embeddings (single vector or 2D matrix of multi-angle vectors)"""
     try:
         safe_name = "".join(c for c in name if c.isalnum() or c in (" ", "_", "-")).strip()
         if not safe_name:
             safe_name = "User"
             
         filepath = KNOWN_FACES_DIR / f"{safe_name}.npy"
-        np.save(filepath, embedding)
-        print(f"✅ Saved embedding: {filepath}")
+
+        if isinstance(embeddings, list):
+            max_len = max(len(e) for e in embeddings)
+            padded = []
+            for e in embeddings:
+                if len(e) < max_len:
+                    e = np.pad(e, (0, max_len - len(e)), mode='constant')
+                padded.append(e[:max_len] / (np.linalg.norm(e[:max_len]) + 1e-8))
+            arr = np.array(padded, dtype=np.float32)
+        else:
+            arr = np.array(embeddings, dtype=np.float32)
+            if arr.ndim == 1:
+                arr = arr.reshape(1, -1)
+            arr = arr / (np.linalg.norm(arr, axis=-1, keepdims=True) + 1e-8)
+
+        np.save(filepath, arr)
+        print(f"✅ Saved multi-angle embedding for {safe_name}: shape={arr.shape}")
         return True
     except Exception as e:
         print(f"❌ Save embedding error: {e}")
         return False
 
 
-def load_embeddings() -> tuple[np.ndarray, list[str]]:
-    """Load all known face embeddings"""
-    embeddings = []
-    names = []
+def load_embeddings() -> list[tuple[str, np.ndarray]]:
+    """Load all known face embeddings as list of (name, matrix_of_angle_vectors)"""
+    known_data = []
 
     for file in KNOWN_FACES_DIR.glob("*.npy"):
         try:
-            emb = np.load(file)
-            embeddings.append(emb)
-            names.append(file.stem)
+            emb_matrix = np.load(file)
+            if emb_matrix.ndim == 1:
+                emb_matrix = emb_matrix.reshape(1, -1)
+            known_data.append((file.stem, emb_matrix))
         except Exception as e:
             print(f"⚠️ Failed to load {file}: {e}")
 
-    if len(embeddings) == 0:
-        return np.array([]), []
-
-    max_size = max(len(e) for e in embeddings)
-    padded = []
-    for emb in embeddings:
-        if len(emb) < max_size:
-            emb = np.pad(emb, (0, max_size - len(emb)), mode='constant')
-        padded.append(emb[:max_size])
-
-    return np.array(padded), names
+    return known_data
 
 
-def match_face(known_embeddings: np.ndarray, known_names: list[str],
-               test_embedding: np.ndarray, threshold: float = 0.65) -> tuple[bool, str, float]:
-    """Match test embedding against known faces using high-precision cosine similarity"""
-    if known_embeddings is None or len(known_embeddings) == 0:
+def match_face(known_data: list[tuple[str, np.ndarray]],
+               test_embedding: np.ndarray,
+               threshold: float = 0.50) -> tuple[bool, str, float]:
+    """Match test embedding against multi-angle known face vectors using max cosine similarity"""
+    if not known_data:
         return False, "UNKNOWN", 0.0
 
-    if test_embedding is None:
+    if test_embedding is None or test_embedding.size == 0:
         return False, "NO_FACE", 0.0
 
-    if len(test_embedding) < len(known_embeddings[0]):
-        test_embedding = np.pad(test_embedding,
-                               (0, len(known_embeddings[0]) - len(test_embedding)),
-                               mode='constant')
-    else:
-        test_embedding = test_embedding[:len(known_embeddings[0])]
+    test_norm = test_embedding / (np.linalg.norm(test_embedding) + 1e-8)
 
-    similarities = []
-    for known_emb in known_embeddings:
-        norm1 = np.linalg.norm(known_emb)
-        norm2 = np.linalg.norm(test_embedding)
+    best_overall_score = -1.0
+    best_overall_name = "INTRUDER"
 
-        if norm1 == 0 or norm2 == 0:
-            sim = 0
+    for (name, angle_vectors) in known_data:
+        # Compute cosine similarity across all stored angles of this person
+        target_len = angle_vectors.shape[1]
+        if len(test_norm) < target_len:
+            test_vec = np.pad(test_norm, (0, target_len - len(test_norm)), mode='constant')
         else:
-            sim = np.dot(known_emb, test_embedding) / (norm1 * norm2)
+            test_vec = test_norm[:target_len]
 
-        similarities.append(sim)
+        scores = np.dot(angle_vectors, test_vec)
+        max_person_score = float(np.max(scores))
 
-    best_idx = np.argmax(similarities)
-    best_score = float(similarities[best_idx])
-    best_name = known_names[best_idx]
+        if max_person_score > best_overall_score:
+            best_overall_score = max_person_score
+            best_overall_name = name
 
-    if best_score >= threshold:
-        return True, best_name, best_score
+    if best_overall_score >= threshold:
+        return True, best_overall_name, best_overall_score
     else:
-        return False, "INTRUDER", best_score
+        return False, "INTRUDER", best_overall_score
 
 
 def get_known_faces_count() -> int:

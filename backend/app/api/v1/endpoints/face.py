@@ -110,7 +110,7 @@ async def analyze_frame(image: UploadFile = File(...)) -> dict:
             }
 
         boxes = [list(map(int, d)) for d in detections]
-        known_embeddings, known_names = await asyncio.to_thread(load_embeddings)
+        known_data = await asyncio.to_thread(load_embeddings)
         
         from app.services.face_recognition_v2 import extract_embedding_from_crop
         
@@ -126,9 +126,9 @@ async def analyze_frame(image: UploadFile = File(...)) -> dict:
 
             emb = await asyncio.to_thread(extract_embedding_from_crop, face_crop)
             
-            if emb is not None and len(known_embeddings) > 0:
+            if emb is not None and len(known_data) > 0:
                 is_match, matched_name, score = await asyncio.to_thread(
-                    match_face, known_embeddings, known_names, emb, 0.65
+                    match_face, known_data, emb, 0.50
                 )
                 if is_match:
                     label = f"KNOWN: {matched_name}"
@@ -269,19 +269,8 @@ async def register_face(name: str = Form(...),
                 "message": "⚠️ No face detected in images. Please try again with clear face photos."
             }
         
-        # Combine embeddings (average them safely with shape homogenization)
-        max_len = max(len(emb) for emb in embeddings)
-        padded_embeddings = []
-        for emb in embeddings:
-            if len(emb) < max_len:
-                emb = np.pad(emb, (0, max_len - len(emb)), mode='constant')
-            padded_embeddings.append(emb[:max_len])
-
-        final_embedding = np.mean(padded_embeddings, axis=0)
-        final_embedding = final_embedding / (np.linalg.norm(final_embedding) + 1e-8)
-        
-        # Save embedding (I/O-bound, run in thread pool)
-        success = await asyncio.to_thread(save_embedding, name, final_embedding)
+        # Save all captured angle embeddings directly for multi-view matching
+        success = await asyncio.to_thread(save_embedding, name, embeddings)
         if success:
             angles_text = f" ({len(embeddings)} angles)" if len(embeddings) > 1 else ""
             return {
