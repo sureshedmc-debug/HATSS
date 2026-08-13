@@ -38,41 +38,57 @@ export function SensorMonitor({ theme }: SensorMonitorProps) {
 
   useEffect(() => {
     const fetchSensorsDirect = async () => {
-      try {
-        // Direct HTTP GET request to ESP32 IP: http://192.168.4.1/api/sensors
-        const espRes = await fetch('http://192.168.4.1/api/sensors', { method: 'GET' });
-        if (espRes.ok) {
-          const espData = await espRes.json();
-          setSensors({
-            fire: Boolean(espData.flame),
-            pir: Boolean(espData.ir),
-            gas: Boolean(espData.gas),
-            raw_gas: Number(espData.raw_mq2 ?? espData.raw_gas ?? 0),
-            mq2_rating: Number(espData.mq2_rating ?? 0),
-            water: Number(espData.water ?? 0),
-            raw_water: Number(espData.raw_water ?? 0),
-            buzzer: Boolean(espData.buzzer),
-            muted: Boolean(espData.muted),
-            last_update: new Date().toLocaleTimeString(),
-            status: 'connected',
-            uptime: espData.uptime || 0
-          });
-          return;
-        }
-      } catch (e) {
-        // Fallback to Backend Relay API if browser blocks cross-origin direct IP fetch
+      const endpoints = [
+        'http://192.168.4.1/api/sensors',
+        'http://192.168.4.1/sensors',
+        'http://192.168.4.1/data',
+        'http://192.168.4.1/json',
+        'http://192.168.4.1/read'
+      ];
+
+      // 1. Try Direct HTTP GET to ESP32 IP 192.168.4.1
+      for (const url of endpoints) {
         try {
-          const res = await fetch('/api/v1/sensors/status');
-          if (res.ok) {
-            const data = await res.json();
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 1000);
+          const espRes = await fetch(url, { method: 'GET', signal: controller.signal });
+          clearTimeout(timeoutId);
+
+          if (espRes.ok) {
+            const espData = await espRes.json();
             setSensors({
-              ...data,
-              status: data.status === 'connected' ? 'connected' : 'connecting'
+              fire: Boolean(espData.flame ?? espData.fire),
+              pir: Boolean(espData.ir ?? espData.pir ?? espData.motion),
+              gas: Boolean(espData.gas ?? (espData.raw_mq2 > 2200)),
+              raw_gas: Number(espData.raw_mq2 ?? espData.raw_gas ?? espData.mq2 ?? 400),
+              mq2_rating: Number(espData.mq2_rating ?? 1),
+              water: Number(espData.water ?? 50),
+              raw_water: Number(espData.raw_water ?? 2400),
+              buzzer: Boolean(espData.buzzer),
+              muted: Boolean(espData.muted),
+              last_update: new Date().toLocaleTimeString(),
+              status: 'connected',
+              uptime: espData.uptime || 0
             });
+            return;
           }
-        } catch (err) {
-          console.error('Sensor fetch error:', err);
+        } catch (e) {
+          // Continue to next endpoint
         }
+      }
+
+      // 2. Fallback to Backend Relay API (which also polls http://192.168.4.1 on server-side)
+      try {
+        const res = await fetch('/api/v1/sensors/status');
+        if (res.ok) {
+          const data = await res.json();
+          setSensors({
+            ...data,
+            status: data.status === 'connected' ? 'connected' : 'connecting'
+          });
+        }
+      } catch (err) {
+        console.error('Sensor fetch error:', err);
       }
     };
 
