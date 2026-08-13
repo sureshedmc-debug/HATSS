@@ -74,23 +74,84 @@ except Exception as e:
 
 
 def query_roboflow_face_detection(frame: np.ndarray) -> list[tuple]:
-    """Cloud API calls disabled to preserve credits. Using 100% offline local AI detection."""
+    """Query Roboflow Cloud AI (face-behavier/15) with user API key for ultra-high accuracy across all devices"""
+    if frame is None or frame.size == 0:
+        return []
+
+    try:
+        # Resize frame to max 640 for fast cloud upload
+        h, w = frame.shape[:2]
+        target_w = 640
+        if w > target_w:
+            scale = target_w / float(w)
+            target_h = int(h * scale)
+            upload_frame = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
+        else:
+            scale = 1.0
+            upload_frame = frame
+
+        # Encode image to JPEG base64
+        _, img_encoded = cv2.imencode('.jpg', upload_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+        img_bytes = img_encoded.tobytes()
+
+        # Send POST request to Roboflow API
+        response = requests.post(
+            f"https://detect.roboflow.com/face-behavier/15?api_key={ROBOFLOW_API_KEY}&confidence=20",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data=base64.b64encode(img_bytes),
+            timeout=1.5
+        )
+
+        if response.status_code == 200:
+            res = response.json()
+            predictions = res.get("predictions", [])
+            detections = []
+
+            for pred in predictions:
+                # Roboflow returns x, y (center), width, height
+                cx, cy = pred["x"], pred["y"]
+                pw, ph = pred["width"], pred["height"]
+
+                # Scale back to original frame dimensions
+                orig_cx = cx / scale
+                orig_cy = cy / scale
+                orig_pw = pw / scale
+                orig_ph = ph / scale
+
+                x1 = int(max(0, orig_cx - (orig_pw / 2)))
+                y1 = int(max(0, orig_cy - (orig_ph / 2)))
+                x2 = int(min(w, orig_cx + (orig_pw / 2)))
+                y2 = int(min(h, orig_cy + (orig_ph / 2)))
+
+                if x2 > x1 and y2 > y1:
+                    detections.append((x1, y1, x2, y2))
+
+            if detections:
+                return detections
+    except Exception as e:
+        print(f"⚠️ Roboflow API fallback to local AI: {e}")
+
     return []
 
 
 def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
-    """100% Guaranteed High-Sensitivity Offline Face Detection Engine"""
+    """Hybrid Detection: 1. Roboflow Cloud AI (face-behavier/15) -> 2. Local OpenCV Ensembles -> 3. Local YOLOv8"""
     if frame is None or frame.size == 0:
         return []
 
-    # Handle 4-channel RGBA / BGRA images from web browsers
+    # Handle 4-channel RGBA / BGRA images from mobile phone canvas
     if frame.ndim == 3 and frame.shape[2] == 4:
         frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+
+    # 1. PRIMARY CLOUD PASS: Roboflow Cloud AI (face-behavier/15 with user API key)
+    rf_detections = query_roboflow_face_detection(frame)
+    if rf_detections:
+        return rf_detections
 
     detections = []
     h, w = frame.shape[:2]
 
-    # 1. PRIMARY FAST PASS: High-Sensitivity OpenCV Multi-Cascade (Sub-3ms Instant Face Detection)
+    # 2. LOCAL FALLBACK PASS: High-Sensitivity OpenCV Multi-Cascade (Sub-3ms Instant Face Detection)
     if haar_cascades:
         try:
             target_w = 480
@@ -125,7 +186,7 @@ def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
         except Exception as e:
             pass
 
-    # 2. SECONDARY PASS: YOLOv8 AI Model Detector
+    # 3. SECONDARY LOCAL PASS: YOLOv8 AI Model Detector
     if face_detector is not None:
         try:
             results = face_detector(frame, verbose=False, conf=0.10)
