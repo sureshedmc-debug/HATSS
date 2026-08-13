@@ -135,55 +135,58 @@ def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
 
 
 def extract_embedding_from_crop(face_crop: np.ndarray) -> np.ndarray | None:
-    """Extract fixed 448-dimensional feature embedding directly from cropped face region"""
+    """
+    Extract high-precision 896-dimensional YOLO Histogram Feature Vector directly from YOLO face crop.
+    Fuses HSV Color Space + YCrCb Skin Model + Spatial 4x4 Grid + LBP Texture Histograms.
+    """
     if face_crop is None or face_crop.size == 0:
         return None
 
     try:
-        gray = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
-        equalized = cv2.equalizeHist(gray)
-        resized = cv2.resize(equalized, (160, 160))
-
+        # Resize YOLO face crop to standard 160x160
+        resized = cv2.resize(face_crop, (160, 160), interpolation=cv2.INTER_LINEAR)
+        
         features = []
 
-        # 1. ORB Descriptors (64 dims)
-        if ORB is not None:
-            kp, des = ORB.detectAndCompute(resized, None)
-            if des is not None and len(des) > 0:
-                des_float = des.astype(np.float32)
-                orb_mean = np.mean(des_float, axis=0)
-                orb_max = np.max(des_float, axis=0)
-                features.extend(orb_mean / (np.linalg.norm(orb_mean) + 1e-8))
-                features.extend(orb_max / (np.linalg.norm(orb_max) + 1e-8))
-            else:
-                features.extend([0.0] * 64)
-        else:
-            features.extend([0.0] * 64)
+        # 1. HSV Color Space Histogram (256 dims)
+        hsv = cv2.cvtColor(resized, cv2.COLOR_BGR2HSV)
+        hsv_hist = cv2.calcHist([hsv], [0, 1], None, [16, 16], [0, 180, 0, 256]).flatten()
+        norm_hsv = hsv_hist / (np.linalg.norm(hsv_hist) + 1e-8)
+        features.extend(norm_hsv)
 
-        # 2. Spatial Grid Histograms (256 dims)
-        h, w = resized.shape
+        # 2. YCrCb Skin Color Space Histogram (256 dims)
+        ycrcb = cv2.cvtColor(resized, cv2.COLOR_BGR2YCrCb)
+        ycrcb_hist = cv2.calcHist([ycrcb], [1, 2], None, [16, 16], [0, 256, 0, 256]).flatten()
+        norm_ycrcb = ycrcb_hist / (np.linalg.norm(ycrcb_hist) + 1e-8)
+        features.extend(norm_ycrcb)
+
+        # 3. Spatial 4x4 Grid Grayscale Histograms (256 dims)
+        gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
+        equalized = cv2.equalizeHist(gray)
+        h, w = equalized.shape
         grid_h, grid_w = h // 4, w // 4
         for i in range(4):
             for j in range(4):
-                cell = resized[i*grid_h:(i+1)*grid_h, j*grid_w:(j+1)*grid_w]
-                hist = cv2.calcHist([cell], [0], None, [16], [0, 256]).flatten()
-                norm_hist = hist / (np.linalg.norm(hist) + 1e-8)
-                features.extend(norm_hist)
+                cell = equalized[i*grid_h:(i+1)*grid_h, j*grid_w:(j+1)*grid_w]
+                cell_hist = cv2.calcHist([cell], [0], None, [16], [0, 256]).flatten()
+                norm_cell = cell_hist / (np.linalg.norm(cell_hist) + 1e-8)
+                features.extend(norm_cell)
 
-        # 3. LBP Texture Histogram (128 dims)
-        gx = cv2.Sobel(resized, cv2.CV_32F, 1, 0, ksize=3)
-        gy = cv2.Sobel(resized, cv2.CV_32F, 0, 1, ksize=3)
+        # 4. LBP Local Texture Gradient Histogram (128 dims)
+        gx = cv2.Sobel(equalized, cv2.CV_32F, 1, 0, ksize=3)
+        gy = cv2.Sobel(equalized, cv2.CV_32F, 0, 1, ksize=3)
         mag, angle = cv2.cartToPolar(gx, gy, angleInDegrees=True)
         lbp_hist, _ = np.histogram(angle.flatten(), bins=128, range=(0, 360), weights=mag.flatten())
-        lbp_norm = lbp_hist.astype(np.float32) / (np.linalg.norm(lbp_hist) + 1e-8)
-        features.extend(lbp_norm)
+        norm_lbp = lbp_hist.astype(np.float32) / (np.linalg.norm(lbp_hist) + 1e-8)
+        features.extend(norm_lbp)
 
+        # Final Normalized 896-Dimensional YOLO Histogram Feature Vector
         vec = np.array(features, dtype=np.float32)
         norm = np.linalg.norm(vec)
         return vec / (norm + 1e-8)
 
     except Exception as e:
-        print(f"❌ Crop embedding error: {e}")
+        print(f"❌ YOLO Histogram extraction error: {e}")
         return None
 
 
