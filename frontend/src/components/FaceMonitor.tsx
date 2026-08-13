@@ -20,7 +20,14 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
   const [registrationFrames, setRegistrationFrames] = useState<Blob[]>([]);
 
   // Draw bounding boxes on overlay canvas
-  const drawBoundingBoxes = (boxes: number[][], label: string, origWidth: number, origHeight: number) => {
+  // Draw bounding boxes on overlay canvas for MULTIPLE faces simultaneously
+  const drawBoundingBoxes = (
+    results: Array<{ box: number[]; label: string; confidence: number }>,
+    fallbackBoxes: number[][],
+    fallbackLabel: string,
+    origWidth: number,
+    origHeight: number
+  ) => {
     const overlay = overlayRef.current;
     if (!overlay) return;
 
@@ -33,18 +40,25 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
 
     ctx.clearRect(0, 0, overlay.width, overlay.height);
 
-    if (!boxes || boxes.length === 0 || !origWidth || !origHeight) return;
+    const items = (results && results.length > 0)
+      ? results
+      : (fallbackBoxes || []).map(b => ({ box: b, label: fallbackLabel, confidence: 0.85 }));
+
+    if (!items || items.length === 0 || !origWidth || !origHeight) return;
 
     const scaleX = overlay.width / origWidth;
     const scaleY = overlay.height / origHeight;
 
-    const isIntruder = label.includes('INTRUDER');
-    const isKnown = label.includes('KNOWN');
+    items.forEach((item) => {
+      const [x1, y1, x2, y2] = item.box;
+      const label = item.label || 'FACE';
 
-    const strokeColor = isIntruder ? '#ef4444' : isKnown ? '#10b981' : '#3b82f6';
-    const bgColor = isIntruder ? 'rgba(239, 68, 68, 0.25)' : isKnown ? 'rgba(16, 185, 129, 0.25)' : 'rgba(59, 130, 246, 0.25)';
+      const isIntruder = label.includes('INTRUDER');
+      const isKnown = label.includes('KNOWN');
 
-    boxes.forEach(([x1, y1, x2, y2]) => {
+      const strokeColor = isIntruder ? '#ef4444' : isKnown ? '#10b981' : '#3b82f6';
+      const bgColor = isIntruder ? 'rgba(239, 68, 68, 0.25)' : isKnown ? 'rgba(16, 185, 129, 0.25)' : 'rgba(59, 130, 246, 0.25)';
+
       // Account for mirrored video scaleX(-1)
       const rectX = overlay.width - (x2 * scaleX);
       const rectY = y1 * scaleY;
@@ -137,10 +151,10 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
                           confidence: data.confidence || 0.0
                         });
 
-                        if (data.boxes && data.frame_size) {
-                          drawBoundingBoxes(data.boxes, data.label || '', data.frame_size[0], data.frame_size[1]);
+                        if (data.frame_size) {
+                          drawBoundingBoxes(data.results || [], data.boxes || [], data.label || '', data.frame_size[0], data.frame_size[1]);
                         } else {
-                          drawBoundingBoxes([], '', 0, 0);
+                          drawBoundingBoxes([], [], '', 0, 0);
                         }
                       }
                     } catch (error) {

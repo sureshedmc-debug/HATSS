@@ -110,29 +110,56 @@ async def analyze_frame(image: UploadFile = File(...)) -> dict:
             }
 
         boxes = [list(map(int, d)) for d in detections]
+        known_embeddings, known_names = await asyncio.to_thread(load_embeddings)
         
-        # Extract embedding from first (largest) face (CPU-bound, run in thread pool)
-        embedding = await asyncio.to_thread(extract_embedding, frame)
+        from app.services.face_recognition_v2 import extract_embedding_from_crop
         
-        if embedding is None:
-            _current_face_status = {
-                "label": "NO FACE",
-                "confidence": 0.0,
-                "last_updated": datetime.now(UTC)
-            }
+        face_results = []
+        has_intruder = False
+        primary_label = "INTRUDER"
+        primary_confidence = 0.0
+
+        for (x1, y1, x2, y2) in boxes:
+            face_crop = frame[y1:y2, x1:x2]
+            if face_crop.size == 0:
+                continue
+
+            emb = await asyncio.to_thread(extract_embedding_from_crop, face_crop)
+            
+            if emb is not None and len(known_embeddings) > 0:
+                is_match, matched_name, score = await asyncio.to_thread(
+                    match_face, known_embeddings, known_names, emb, 0.65
+                )
+                if is_match:
+                    label = f"KNOWN: {matched_name}"
+                    conf = float(score)
+                else:
+                    label = "INTRUDER"
+                    conf = 0.85
+                    has_intruder = True
+            else:
+                label = "INTRUDER"
+                conf = 0.85
+                has_intruder = True
+
+            face_results.append({
+                "box": [x1, y1, x2, y2],
+                "label": label,
+                "confidence": conf
+            })
+
+        if not face_results:
             return {
                 "label": "NO FACE",
                 "confidence": 0.0,
-                "faces_detected": len(detections),
-                "boxes": boxes,
+                "faces_detected": 0,
+                "results": [],
+                "boxes": [],
                 "frame_size": [frame.shape[1], frame.shape[0]]
             }
-        
-        # Load known faces (I/O-bound, run in thread pool)
-        known_embeddings, known_names = await asyncio.to_thread(load_embeddings)
-        
-        if len(known_embeddings) == 0:
-            # No known faces registered yet - Treat face as INTRUDER & save snapshot
+
+        # Save snapshot if any intruder is detected
+        if has_intruder:
             now_ts = datetime.now(UTC).timestamp()
             if (now_ts - _last_intrusion_saved_time) > 2.0:
                 try:
@@ -142,44 +169,28 @@ async def analyze_frame(image: UploadFile = File(...)) -> dict:
                     intrusion_path = intrusions_dir / f"{timestamp}.jpg"
                     await asyncio.to_thread(cv2.imwrite, str(intrusion_path), frame)
                     _last_intrusion_saved_time = now_ts
-                    print(f"🚨 Intruder photo saved (unregistered): {intrusion_path}")
+                    print(f"🚨 Intruder photo saved: {intrusion_path}")
                 except Exception as e:
                     print(f"⚠️ Failed to save intrusion photo: {e}")
 
-            _current_face_status = {
-                "label": "INTRUDER",
-                "confidence": 0.95,
-                "last_updated": datetime.now(UTC)
-            }
-            return {
-                "label": "INTRUDER",
-                "confidence": 0.95,
-                "faces_detected": len(detections),
-                "matched": False,
-                "boxes": boxes,
-                "frame_size": [frame.shape[1], frame.shape[0]]
-            }
-        
-        # Match face (CPU-bound, run in thread pool)
-        is_match, matched_name, score = await asyncio.to_thread(
-            match_face, known_embeddings, known_names, embedding, 0.78
-        )
-        
-        if is_match:
-            _current_face_status = {
-                "label": f"KNOWN: {matched_name}",
-                "confidence": float(score),
-                "last_updated": datetime.now(UTC)
-            }
-            return {
-                "label": f"KNOWN: {matched_name}",
-                "confidence": float(score),
-                "faces_detected": len(detections),
-                "matched": True,
-                "name": matched_name,
-                "boxes": boxes,
-                "frame_size": [frame.shape[1], frame.shape[0]]
-            }
+        # Set status to first face result or highest priority
+        primary_label = face_results[0]["label"]
+        primary_confidence = face_results[0]["confidence"]
+
+        _current_face_status = {
+            "label": primary_label,
+            "confidence": primary_confidence,
+            "last_updated": datetime.now(UTC)
+        }
+
+        return {
+            "label": primary_label,
+            "confidence": primary_confidence,
+            "faces_detected": len(face_results),
+            "results": face_results,
+            "boxes": [r["box"] for r in face_results],
+            "frame_size": [frame.shape[1], frame.shape[0]]
+        }
         else:
             # INTRUDER DETECTED - Save snapshot (throttled to 1 image per 2 seconds)
             now_ts = datetime.now(UTC).timestamp()
