@@ -220,16 +220,13 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
       }
     };
 
-    // Delay slightly to ensure page is ready
-    const timer = setTimeout(() => {
-      if (isMounted) {
-        initCamera();
-      }
-    }, 500);
+    // Execute initCamera INSTANTLY on mount (0ms delay)
+    if (isMounted) {
+      initCamera();
+    }
 
     return () => {
       isMounted = false;
-      clearTimeout(timer);
       if (frameInterval) {
         clearInterval(frameInterval);
       }

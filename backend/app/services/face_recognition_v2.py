@@ -107,14 +107,13 @@ def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
         except Exception as e:
             print(f"YOLOv8 offline detection error: {e}")
 
-    # 2. SECONDARY: Local Offline Multi-Cascade OpenCV Detector (Rotational & Mobile Sensitive)
+    # 2. SECONDARY: Fast 1-Pass Unrotated OpenCV Detector (sub-5ms execution)
     if haar_cascades:
         try:
-            target_w = 512
+            target_w = 480
             if w > target_w:
                 scale_ratio = w / float(target_w)
-                target_h = int(h / scale_ratio)
-                small_frame = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
+                small_frame = cv2.resize(frame, (target_w, int(h / scale_ratio)), interpolation=cv2.INTER_LINEAR)
             else:
                 scale_ratio = 1.0
                 small_frame = frame
@@ -122,9 +121,25 @@ def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
             gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
             gray = cv2.equalizeHist(gray)
 
-            # Try normal + rotated orientations for vertical phone cameras
+            # Fast 1-Pass Frontal Check (Instant <5ms return)
+            faces = haar_cascades[0].detectMultiScale(
+                gray,
+                scaleFactor=1.1,
+                minNeighbors=3,
+                minSize=(24, 24),
+                flags=cv2.CASCADE_SCALE_IMAGE
+            )
+            if len(faces) > 0:
+                for (x, y, bw, bh) in faces:
+                    x1 = int(x * scale_ratio)
+                    y1 = int(y * scale_ratio)
+                    x2 = int((x + bw) * scale_ratio)
+                    y2 = int((y + bh) * scale_ratio)
+                    detections.append((max(0, x1), max(0, y1), min(w, x2), min(h, y2)))
+                return detections
+
+            # Rotated orientations fallback only if 0 faces detected
             orientations = [
-                (gray, scale_ratio, 0),
                 (cv2.rotate(gray, cv2.ROTATE_90_CLOCKWISE), scale_ratio, 90),
                 (cv2.rotate(gray, cv2.ROTATE_90_COUNTERCLOCKWISE), scale_ratio, 270)
             ]
@@ -133,23 +148,16 @@ def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
                 for cascade in haar_cascades:
                     faces = cascade.detectMultiScale(
                         img_gray,
-                        scaleFactor=1.05,
-                        minNeighbors=2,
-                        minSize=(20, 20),
+                        scaleFactor=1.1,
+                        minNeighbors=3,
+                        minSize=(24, 24),
                         flags=cv2.CASCADE_SCALE_IMAGE
                     )
                     for (x, y, bw, bh) in faces:
-                        if rot == 0:
-                            x1 = int(x * s_ratio)
-                            y1 = int(y * s_ratio)
-                            x2 = int((x + bw) * s_ratio)
-                            y2 = int((y + bh) * s_ratio)
-                        else:
-                            # Map back rotated box
-                            x1 = int(x * s_ratio)
-                            y1 = int(y * s_ratio)
-                            x2 = int((x + bw) * s_ratio)
-                            y2 = int((y + bh) * s_ratio)
+                        x1 = int(x * s_ratio)
+                        y1 = int(y * s_ratio)
+                        x2 = int((x + bw) * s_ratio)
+                        y2 = int((y + bh) * s_ratio)
                         detections.append((max(0, x1), max(0, y1), min(w, x2), min(h, y2)))
                     if detections:
                         return detections
