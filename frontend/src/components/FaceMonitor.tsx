@@ -109,14 +109,22 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
 
     const initCamera = async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            width: { ideal: 15360, max: 15360 }, 
-            height: { ideal: 8640, max: 8640 },
-            frameRate: { ideal: 60 }
-          },
-          audio: false 
-        });
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+              width: { ideal: 1920 }, 
+              height: { ideal: 1080 },
+              facingMode: 'user'
+            },
+            audio: false 
+          });
+        } catch (e) {
+          // Mobile Fallback: Standard camera constraints
+          stream = await navigator.mediaDevices.getUserMedia({ 
+            video: true,
+            audio: false 
+          });
+        }
         
         if (isMounted && videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -150,6 +158,9 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
                       formData.append('image', blob);
                       const response = await fetch('/api/v1/face/analyze-frame', {
                         method: 'POST',
+                        headers: {
+                          'ngrok-skip-browser-warning': 'true'
+                        },
                         body: formData,
                         signal: controller.signal
                       });
