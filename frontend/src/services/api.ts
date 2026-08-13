@@ -158,7 +158,10 @@ export async function requestCopilotBrief(question: string): Promise<CopilotBrie
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(apiPath(path), {
-    headers: { Accept: 'application/json' },
+    headers: { 
+      Accept: 'application/json',
+      'ngrok-skip-browser-warning': 'true'
+    },
     signal,
   });
 
@@ -172,7 +175,11 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
 async function sendJson<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(apiPath(path), {
     body: JSON.stringify(body),
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    headers: { 
+      Accept: 'application/json', 
+      'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true'
+    },
     method: 'POST',
   });
   if (!response.ok) {
