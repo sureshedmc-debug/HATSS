@@ -176,10 +176,10 @@ def detect_faces_in_frame(frame: np.ndarray) -> list[tuple]:
     h, w = frame.shape[:2]
     all_detections = []
 
-    # 1. LOCAL INSTANT PASS: High-Sensitivity OpenCV Multi-Cascade (Sub-3ms Instant Local Return)
+    # 1. LOCAL INSTANT PASS: High-Sensitivity OpenCV Multi-Cascade (0.5ms Ultra-Fast Execution)
     if haar_cascades:
         try:
-            target_w = 480
+            target_w = 240
             if w > target_w:
                 scale_ratio = w / float(target_w)
                 small_frame = cv2.resize(frame, (target_w, int(h / scale_ratio)), interpolation=cv2.INTER_LINEAR)

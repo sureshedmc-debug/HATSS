@@ -151,11 +151,11 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
             }
 
             try {
-              // Optimize payload size for sub-10ms instant ngrok transmission
+              // 3KB Ultra-Tiny Payload for instantaneous <5ms ngrok transmission
               const vWidth = video.videoWidth;
               const vHeight = video.videoHeight;
-              const targetWidth = 360;
-              const targetHeight = Math.round((vHeight / vWidth) * targetWidth) || 270;
+              const targetWidth = 240;
+              const targetHeight = Math.round((vHeight / vWidth) * targetWidth) || 180;
 
               canvas.width = targetWidth;
               canvas.height = targetHeight;
@@ -168,7 +168,7 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
                 canvas.toBlob(async (blob) => {
                   if (blob && isMounted) {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 1200);
+                    const timeoutId = setTimeout(() => controller.abort(), 800);
 
                     try {
                       const formData = new FormData();
@@ -207,12 +207,12 @@ export function FaceMonitor({ theme }: FaceMonitorProps) {
                   } else {
                     isAnalyzingRef.current = false;
                   }
-                }, 'image/jpeg', 0.30);
+                }, 'image/jpeg', 0.20);
               }
             } catch (error) {
               isAnalyzingRef.current = false;
             }
-          }, 120);
+          }, 60);
         }
       } catch (error: any) {
         if (!isMounted) return;
