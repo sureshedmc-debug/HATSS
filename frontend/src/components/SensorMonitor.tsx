@@ -60,10 +60,10 @@ export function SensorMonitor({ theme }: SensorMonitorProps) {
               fire: Boolean(espData.flame ?? espData.fire),
               pir: Boolean(espData.ir ?? espData.pir ?? espData.motion),
               gas: Boolean(espData.gas ?? (espData.raw_mq2 > 2200)),
-              raw_gas: Number(espData.raw_mq2 ?? espData.raw_gas ?? espData.mq2 ?? 400),
-              mq2_rating: Number(espData.mq2_rating ?? 1),
-              water: Number(espData.water ?? 50),
-              raw_water: Number(espData.raw_water ?? 2400),
+              raw_gas: Number(espData.raw_mq2 ?? espData.raw_gas ?? espData.mq2 ?? espData.raw_ao ?? espData.ao ?? espData.aqi ?? espData.air_quality ?? espData.ppm ?? 0),
+              mq2_rating: Number(espData.mq2_rating ?? 0),
+              water: Number(espData.water ?? espData.water_level ?? espData.water_pct ?? 0),
+              raw_water: Number(espData.raw_water ?? espData.water_raw ?? espData.raw_soil ?? 0),
               buzzer: Boolean(espData.buzzer),
               muted: Boolean(espData.muted),
               last_update: new Date().toLocaleTimeString(),
@@ -171,7 +171,7 @@ export function SensorMonitor({ theme }: SensorMonitorProps) {
           </p>
         </div>
 
-        {/* 3. Gas Detection Widget */}
+        {/* 3. Live Air Quality (MQ2 Gas) Widget */}
         <div className={`${bgColor} rounded-2xl border transition-all ${
           isGasHazard ? 'border-red-500 bg-red-500/10 shadow-lg shadow-red-500/20' : borderCard(theme)
         } p-5`}>
@@ -181,7 +181,7 @@ export function SensorMonitor({ theme }: SensorMonitorProps) {
               !isConnected ? 'bg-slate-600' : isGasHazard ? 'bg-red-500 animate-ping' : 'bg-emerald-500'
             }`} />
           </div>
-          <p className="text-xs font-semibold text-slate-400 uppercase mt-4">Gas Detection</p>
+          <p className="text-xs font-semibold text-slate-400 uppercase mt-4">Live Air Quality (MQ2)</p>
           <div className="mt-1 flex items-baseline justify-between">
             <p className={`text-3xl font-black font-mono ${
               !isConnected ? 'text-slate-500' : isGasHazard ? 'text-red-500 animate-pulse' : 'text-emerald-400'
@@ -193,7 +193,7 @@ export function SensorMonitor({ theme }: SensorMonitorProps) {
             </span>
           </div>
           <div className="mt-3 flex justify-between items-center text-xs font-mono text-slate-400 border-t border-slate-800 pt-2">
-            <span>Threshold: 2200</span>
+            <span>ESP32 AO Raw</span>
             <span className={!isConnected ? 'text-slate-500' : isGasHazard ? 'text-red-400 font-bold' : 'text-emerald-400'}>
               {!isConnected ? 'NO DATA' : isGasHazard ? '🚨 HAZARD GAS!' : 'NORMAL AIR'}
             </span>
